@@ -42,7 +42,7 @@ public class MinumBuilder {
 
   public static final boolean IS_LOCAL_DEV = "true".equalsIgnoreCase(System.getenv("JPING_LOCAL_DEV"));
 
-  public static FullSystem build(int port) {
+  public static FullSystem build(int port, int sslPort) {
     if (IS_LOCAL_DEV) {
       logger.info("Running in the local development mode. Hot-Reload Module is enabled. `npm run hmr` must be running in a separate terminal");
     } else {
@@ -51,6 +51,8 @@ public class MinumBuilder {
 
     var props = new Properties();
     props.setProperty("SERVER_PORT", "" + port);
+    // Minum always starts an HTTPS server too, so it needs its own port.
+    props.setProperty("SSL_SERVER_PORT", "" + sslPort);
     props.setProperty("LOG_LEVELS", "ASYNC_ERROR,AUDIT");
     props.setProperty("IS_THE_BRIG_ENABLED", "false");
     props.setProperty("ENABLE_SYSTEM_RUNNING_MARKER", "false");
