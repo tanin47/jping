@@ -23,12 +23,17 @@ public class Base {
   static boolean IS_MAC = System.getProperty("os.name").toLowerCase().contains("mac");
 
   WebDriver webDriver;
-  Main server;
+  WebServer server;
+  DatabaseService db;
   Connection conn;
   boolean shouldLoggedIn = true;
 
   @BeforeAll
-  void setUpAll() throws SQLException, URISyntaxException, InterruptedException {
+  void setUpAll() throws Exception {
+    var databaseUrl = System.getenv("JPING_DATABASE_URL");
+    assertNotNull(databaseUrl, "JPING_DATABASE_URL is required. It's set in build.gradle.kts for the test task.");
+    db = new DatabaseService(databaseUrl);
+
     initializeWebDriver();
   }
 
@@ -56,9 +61,15 @@ public class Base {
   }
 
   @BeforeEach
-  void setUp() throws SQLException, URISyntaxException {
-    server = new Main(PORT);
+  void setUp() throws Exception {
+    // Starting the server runs the migration, so the tables exist before they're emptied below.
+    server = new WebServer(PORT, -1, null, null, db);
     server.start();
+
+    // Start each test with an empty database.
+    try (var c = db.connect(); var stmt = c.createStatement()) {
+      stmt.execute("TRUNCATE website_url, response");
+    }
   }
 
   @AfterEach

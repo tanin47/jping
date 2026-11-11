@@ -47,6 +47,9 @@ repositories {
 
 dependencies {
     implementation("com.renomad:minum:11.0.4")
+    implementation("io.github.tanin47:jmigrate:0.4.0")
+    api("org.postgresql:postgresql:42.7.14")
+    api("com.eclipsesource.minimal-json:minimal-json:0.9.5")
 
     testImplementation("org.junit.jupiter:junit-jupiter:6.1.3")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
@@ -59,6 +62,7 @@ tasks.named<Test>("test") {
     maxHeapSize = "1G"
 
     environment("JPING_LOCAL_DEV", "true")
+    environment("JPING_DATABASE_URL", "postgres://jping_test_user:test@localhost:5432/jping_test")
 
     testLogging {
         events("started", "passed", "skipped", "failed")
@@ -77,6 +81,7 @@ application {
 
 tasks.named<JavaExec>("run") {
     environment("JPING_LOCAL_DEV", "true")
+    environment("JPING_DATABASE_URL", "postgres://jping_dev_user:dev@localhost:5432/jping_dev")
 }
 
 publishing {
