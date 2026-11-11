@@ -68,14 +68,33 @@ public class ListWebsiteUptimesTest {
   }
 
   @Test
+  void bucketEdgesAreAlignedToMinutes() throws Exception {
+    // 7 days don't split evenly into 90 buckets, so the bucket sizes differ by one minute.
+    var start = START.plusSeconds(30);
+    var end = START.plus(Duration.ofDays(7)).plusSeconds(10);
+    var buckets = db.listWebsiteUptimes(start, end).getFirst().buckets();
+
+    assertEquals(START, buckets.getFirst().start());
+    assertEquals(START.plus(Duration.ofDays(7)).plus(Duration.ofMinutes(1)), buckets.getLast().end());
+    var totalMinutes = 0;
+    for (var bucket : buckets) {
+      assertEquals(0, bucket.start().getEpochSecond() % 60);
+      assertEquals(0, bucket.end().getEpochSecond() % 60);
+      assertEquals(Duration.between(bucket.start(), bucket.end()).toMinutes(), bucket.total());
+      totalMinutes += bucket.total();
+    }
+    assertEquals(7 * 24 * 60 + 1, totalMinutes);
+  }
+
+  @Test
   void bucketStartIsInclusiveAndEndIsExclusive() throws Exception {
     // Each bucket is 1 minute: bucket 0 is [00:00, 00:01), bucket 1 is [00:01, 00:02).
     addCheck(START, 200, true);
     addCheck(START.plusSeconds(59), 200, true);
     addCheck(START.plusSeconds(60), 200, true);
 
-    assertEquals(2, bucket(0).checks());
-    assertEquals(1, bucket(1).checks());
+    assertEquals(2, bucket(0).successes());
+    assertEquals(1, bucket(1).successes());
   }
 
   @Test
@@ -84,27 +103,72 @@ public class ListWebsiteUptimesTest {
     addCheck(END, 200, true);
 
     var buckets = db.listWebsiteUptimes(START, END).getFirst().buckets();
-    assertEquals(0, buckets.stream().mapToInt(DatabaseService.Bucket::checks).sum());
+    assertEquals(0, buckets.stream().mapToInt(b -> b.successes() + b.failures()).sum());
   }
 
   @Test
-  void countsSuccessfulChecks() throws Exception {
+  void countsSuccessesFailuresAndNoData() throws Exception {
+    // 180 minutes into 90 buckets, so each bucket is 2 minutes.
+    var end = START.plus(Duration.ofMinutes(180));
     addCheck(START, 200, true);
-    addCheck(START.plusSeconds(1), 302, true);
-    addCheck(START.plusSeconds(2), 404, true);
-    addCheck(START.plusSeconds(3), 500, true);
-    addCheck(START.plusSeconds(4), null, true);
+    addCheck(START.plusSeconds(60), 500, true);
+    addCheck(START.plusSeconds(120), 404, true);
+    addCheck(START.plusSeconds(240), null, true);
 
-    var bucket = bucket(0);
-    assertEquals(5, bucket.checks());
-    assertEquals(3, bucket.successfulChecks());
+    var buckets = db.listWebsiteUptimes(START, end).getFirst().buckets();
+    assertBucket(buckets.get(0), 2, 1, 1, 0);
+    assertBucket(buckets.get(1), 2, 1, 0, 1);
+    assertBucket(buckets.get(2), 2, 0, 1, 1);
+    assertBucket(buckets.get(3), 2, 0, 0, 2);
   }
 
   @Test
-  void unfinishedChecksAreSkipped() throws Exception {
+  void unfinishedChecksCountAsNoData() throws Exception {
     addCheck(START, null, false);
 
-    assertEquals(0, bucket(0).checks());
-    assertNull(bucket(0).uptime());
+    assertBucket(bucket(0), 1, 0, 0, 1);
+  }
+
+  @Test
+  void shortRangesLeaveSomeBucketsEmpty() throws Exception {
+    var end = START.plus(Duration.ofMinutes(45));
+    addCheck(START.plusSeconds(44 * 60), 200, true);
+
+    var buckets = db.listWebsiteUptimes(START, end).getFirst().buckets();
+    assertEquals(45, buckets.stream().mapToInt(DatabaseService.Bucket::total).sum());
+    assertEquals(1, buckets.stream().mapToInt(DatabaseService.Bucket::successes).sum());
+    var last = buckets.getLast();
+    assertEquals(START.plusSeconds(44 * 60), last.start());
+    assertBucket(last, 1, 1, 0, 0);
+  }
+
+  @Test
+  void finishResponseSetsTheTimesOnlyOnce() throws Exception {
+    var startedAt = START.plusSeconds(1);
+    var finishedAt = START.plusSeconds(2);
+    db.insertResponse(URL, START, START);
+
+    assertTrue(db.finishResponse(URL, START, startedAt, finishedAt, 200, null));
+    assertFalse(db.finishResponse(URL, START, START.plusSeconds(5), START.plusSeconds(6), 500, "late"));
+
+    try (
+      var conn = db.connect();
+      var stmt = conn.prepareStatement("SELECT started_at, finished_at, response_code, error FROM response");
+      var rs = stmt.executeQuery()
+    ) {
+      assertTrue(rs.next());
+      assertEquals(startedAt, rs.getTimestamp("started_at").toInstant());
+      assertEquals(finishedAt, rs.getTimestamp("finished_at").toInstant());
+      assertEquals(200, rs.getInt("response_code"));
+      assertNull(rs.getString("error"));
+      assertFalse(rs.next());
+    }
+  }
+
+  void assertBucket(DatabaseService.Bucket bucket, int total, int successes, int failures, int noData) {
+    assertEquals(total, bucket.total());
+    assertEquals(successes, bucket.successes());
+    assertEquals(failures, bucket.failures());
+    assertEquals(noData, bucket.noData());
   }
 }

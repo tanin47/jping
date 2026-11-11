@@ -332,14 +332,14 @@ public class WebServer {
   static JsonObject toJson(DatabaseService.WebsiteUrlUptime website) {
     var buckets = new JsonArray();
     for (var bucket : website.buckets()) {
-      var uptime = bucket.uptime();
       buckets.add(
         new JsonObject()
           .add("start", bucket.start().toString())
           .add("end", bucket.end().toString())
-          .add("checks", bucket.checks())
-          .add("successfulChecks", bucket.successfulChecks())
-          .add("uptime", uptime == null ? Json.NULL : Json.value(uptime))
+          .add("total", bucket.total())
+          .add("successes", bucket.successes())
+          .add("failures", bucket.failures())
+          .add("noData", bucket.noData())
       );
     }
     return new JsonObject()

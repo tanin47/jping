@@ -6,7 +6,9 @@ import tanin.jmigrate.JMigrate;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -22,13 +24,12 @@ public class DatabaseService {
   public record WebsiteUrl(String url) {}
 
   /**
-   * One slice of the uptime timeline, covering [start, end).
-   * checks is the number of checks that started in the slice; successfulChecks is how many of them got an OK response.
+   * One slice of the uptime timeline, covering [start, end). Both ends are at the start of a minute.
+   * total is the number of checks that should have run (one per minute); noData is the ones without a finished result.
    */
-  public record Bucket(Instant start, Instant end, int checks, int successfulChecks) {
-    /** The uptime percentage (0..100), or null when there were no checks in this bucket. */
-    public Double uptime() {
-      return checks == 0 ? null : successfulChecks * 100.0 / checks;
+  public record Bucket(Instant start, Instant end, int total, int successes, int failures) {
+    public int noData() {
+      return Math.max(0, total - successes - failures);
     }
   }
 
@@ -115,29 +116,36 @@ public class DatabaseService {
   }
 
   /**
-   * Returns every website with its uptime between start and end, split into UPTIME_BUCKET_COUNT equal buckets.
+   * Returns every website with its uptime between start and end, split into UPTIME_BUCKET_COUNT buckets.
+   * start is rounded down and end is rounded up to the minute, and every bucket edge is at the start of a minute.
+   * When the range has fewer minutes than UPTIME_BUCKET_COUNT, some buckets are empty.
    */
   public List<WebsiteUrlUptime> listWebsiteUptimes(Instant start, Instant end) throws SQLException {
-    var bucketMillis = (end.toEpochMilli() - start.toEpochMilli()) / (double) UPTIME_BUCKET_COUNT;
-    // The last edge is exactly `end` so rounding never leaves a gap.
-    var edges = new Instant[UPTIME_BUCKET_COUNT + 1];
-    for (int i = 0; i < UPTIME_BUCKET_COUNT; i++) {
-      edges[i] = Instant.ofEpochMilli(start.toEpochMilli() + Math.round(i * bucketMillis));
+    var alignedStart = start.truncatedTo(ChronoUnit.MINUTES);
+    var alignedEnd = end.truncatedTo(ChronoUnit.MINUTES);
+    if (alignedEnd.isBefore(end)) {
+      alignedEnd = alignedEnd.plus(Duration.ofMinutes(1));
     }
-    edges[UPTIME_BUCKET_COUNT] = end;
+    var totalMinutes = Duration.between(alignedStart, alignedEnd).toMinutes();
 
-    var checksByUrl = new HashMap<String, int[][]>();
+    var edges = new Instant[UPTIME_BUCKET_COUNT + 1];
+    for (int i = 0; i <= UPTIME_BUCKET_COUNT; i++) {
+      edges[i] = alignedStart.plus(Duration.ofMinutes(i * totalMinutes / UPTIME_BUCKET_COUNT));
+    }
+
+    var countsByUrl = new HashMap<String, int[][]>();
     try (
       var conn = connect();
       // width_bucket(value, thresholds) returns i when thresholds[i] <= value < thresholds[i + 1] (1-based),
-      // so each bucket includes its start and excludes its end.
-      // Checks that haven't finished yet are skipped so they don't count as failures.
+      // so each bucket includes its start and excludes its end. Empty buckets share their start with the next
+      // bucket, and width_bucket picks the last of equal thresholds, so nothing is counted in an empty bucket.
+      // Checks that haven't finished yet are left out, so they count as no data.
       var stmt = conn.prepareStatement("""
         SELECT
           url,
           width_bucket(scheduled_at, ?::timestamptz[]) AS bucket,
-          count(*) AS checks,
-          count(*) FILTER (WHERE response_code BETWEEN 200 AND 499) AS successful_checks
+          count(*) FILTER (WHERE response_code BETWEEN 200 AND 499) AS successes,
+          count(*) FILTER (WHERE response_code IS NULL OR response_code NOT BETWEEN 200 AND 499) AS failures
         FROM response
         WHERE scheduled_at >= ? AND scheduled_at < ? AND finished_at IS NOT NULL
         GROUP BY url, bucket
@@ -148,25 +156,26 @@ public class DatabaseService {
         bucketStarts[i] = Timestamp.from(edges[i]);
       }
       stmt.setArray(1, conn.createArrayOf("timestamptz", bucketStarts));
-      stmt.setTimestamp(2, Timestamp.from(start));
-      stmt.setTimestamp(3, Timestamp.from(end));
+      stmt.setTimestamp(2, Timestamp.from(alignedStart));
+      stmt.setTimestamp(3, Timestamp.from(alignedEnd));
 
       try (var rs = stmt.executeQuery()) {
         while (rs.next()) {
-          var counts = checksByUrl.computeIfAbsent(rs.getString("url"), k -> new int[UPTIME_BUCKET_COUNT][2]);
+          var counts = countsByUrl.computeIfAbsent(rs.getString("url"), k -> new int[UPTIME_BUCKET_COUNT][2]);
           var index = rs.getInt("bucket") - 1;
-          counts[index][0] = rs.getInt("checks");
-          counts[index][1] = rs.getInt("successful_checks");
+          counts[index][0] = rs.getInt("successes");
+          counts[index][1] = rs.getInt("failures");
         }
       }
     }
 
     var result = new ArrayList<WebsiteUrlUptime>();
     for (var website : listWebsites()) {
-      var counts = checksByUrl.getOrDefault(website.url(), new int[UPTIME_BUCKET_COUNT][2]);
+      var counts = countsByUrl.getOrDefault(website.url(), new int[UPTIME_BUCKET_COUNT][2]);
       var buckets = new ArrayList<Bucket>(UPTIME_BUCKET_COUNT);
       for (int i = 0; i < UPTIME_BUCKET_COUNT; i++) {
-        buckets.add(new Bucket(edges[i], edges[i + 1], counts[i][0], counts[i][1]));
+        var total = (int) Duration.between(edges[i], edges[i + 1]).toMinutes();
+        buckets.add(new Bucket(edges[i], edges[i + 1], total, counts[i][0], counts[i][1]));
       }
       result.add(new WebsiteUrlUptime(website.url(), buckets));
     }
@@ -208,19 +217,29 @@ public class DatabaseService {
     }
   }
 
-  public void finishResponse(String url, Instant scheduledAt, Instant finishedAt, Integer responseCode, String error) throws SQLException {
+  /** Returns false, and changes nothing, when the check already has a finished_at. */
+  public boolean finishResponse(
+    String url,
+    Instant scheduledAt,
+    Instant startedAt,
+    Instant finishedAt,
+    Integer responseCode,
+    String error
+  ) throws SQLException {
     try (
       var conn = connect();
-      var stmt = conn.prepareStatement(
-        "UPDATE response SET finished_at = ?, response_code = ?, error = ? WHERE url = ? AND scheduled_at = ?"
-      )
+      var stmt = conn.prepareStatement("""
+        UPDATE response SET started_at = ?, finished_at = ?, response_code = ?, error = ?
+        WHERE url = ? AND scheduled_at = ? AND finished_at IS NULL
+        """)
     ) {
-      stmt.setTimestamp(1, Timestamp.from(finishedAt));
-      stmt.setObject(2, responseCode);
-      stmt.setString(3, error);
-      stmt.setString(4, url);
-      stmt.setTimestamp(5, Timestamp.from(scheduledAt));
-      stmt.executeUpdate();
+      stmt.setTimestamp(1, Timestamp.from(startedAt));
+      stmt.setTimestamp(2, Timestamp.from(finishedAt));
+      stmt.setObject(3, responseCode);
+      stmt.setString(4, error);
+      stmt.setString(5, url);
+      stmt.setTimestamp(6, Timestamp.from(scheduledAt));
+      return stmt.executeUpdate() > 0;
     }
   }
 
