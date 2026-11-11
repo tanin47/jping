@@ -17,6 +17,27 @@ public class AuthTest extends Base {
   }
 
   @Test
+  void addingAndDeletingWithoutCredentialsIsForbidden() throws Exception {
+    db.addWebsite("https://example.com");
+    var body = "{\"url\": \"https://example.com\"}";
+
+    assertEquals(403, request("POST", "/api/websites", "{\"url\": \"https://new.example.com\"}", false).statusCode());
+    assertEquals(403, request("DELETE", "/api/websites", body, false).statusCode());
+    assertEquals(1, db.listWebsites().size());
+
+    var wrongToken = java.util.Base64.getEncoder().encodeToString((USERNAME + ":wrong").getBytes());
+    var response = java.net.http.HttpClient.newHttpClient().send(
+      java.net.http.HttpRequest.newBuilder(java.net.URI.create("http://localhost:" + PORT + "/api/websites"))
+        .header("Authorization", "Basic " + wrongToken)
+        .method("DELETE", java.net.http.HttpRequest.BodyPublishers.ofString(body))
+        .build(),
+      java.net.http.HttpResponse.BodyHandlers.ofString()
+    );
+    assertEquals(403, response.statusCode());
+    assertEquals(1, db.listWebsites().size());
+  }
+
+  @Test
   void credentialsGiveAccess() throws Exception {
     assertEquals(200, request("GET", "/", null, true).statusCode());
     assertEquals(200, request("GET", "/api/websites", null, true).statusCode());

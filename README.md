@@ -122,14 +122,16 @@ import tanin.jping.WebServer;
 var server = new WebServer(
   9090, // The HTTP port
   8443, // The HTTPS port
+  "admin", // The username for HTTP Basic Authentication
+  "change-me", // The password for HTTP Basic Authentication
+  false, // Whether the public access is enabled. See "Public access" above.
   "postgres://user:password@localhost:5432/jping"
 );
 server.start();
 ```
 
-This constructor reads `JPING_USERNAME`, `JPING_PASSWORD`, and `JPING_PUBLIC_ACCESS` from the env variables, and throws
-when the username or password is missing. To set them in code, use
-`new WebServer(httpPort, httpsPort, username, password, isPublicAccess, databaseUrl)`.
+`WebServer` doesn't read any env variables, so the larger system passes everything in. It throws when the username or
+password is empty.
 
 3. Visit http://localhost:9090 to confirm that the embedded JPing is working.
 

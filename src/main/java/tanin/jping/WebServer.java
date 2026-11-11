@@ -52,17 +52,6 @@ public class WebServer {
   final DatabaseService db;
   final Pinger pinger;
 
-  public WebServer(int port, int sslPort, String databaseUrl) throws Exception {
-    this(
-      port,
-      sslPort,
-      System.getenv("JPING_USERNAME"),
-      System.getenv("JPING_PASSWORD"),
-      "true".equalsIgnoreCase(System.getenv("JPING_PUBLIC_ACCESS")),
-      databaseUrl
-    );
-  }
-
   public WebServer(
     int port,
     int sslPort,
@@ -89,15 +78,19 @@ public class WebServer {
   }
 
   /**
-   * The healthcheck is always open so load balancers can reach it.
-   * /admin and any request that changes data always require the credentials.
-   * Everything else is open only when the public access is enabled.
+   * Whether the page or the read-only API asks for the credentials before serving the request.
+   * The healthcheck is always open so load balancers can reach it, and /admin always asks.
+   * Everything else asks only when the public access is disabled.
+   * Requests that change data are checked by their own endpoints instead, which return 403.
    */
   boolean requiresAuth(RequestLine.Method method, String path) {
     if (path.equals("healthcheck")) {
       return false;
     }
-    if (path.equals("admin") || method != GET) {
+    if (method != GET) {
+      return false;
+    }
+    if (path.equals("admin")) {
       return true;
     }
     return !isPublicAccess;
@@ -226,6 +219,10 @@ public class WebServer {
     });
 
     wf.registerPath(POST, "api/websites", req -> {
+      if (!isAuthorized(req.getHeaders().valueByKey("authorization"))) {
+        return error(StatusLine.StatusCode.CODE_403_FORBIDDEN, "You need to sign in at /admin to add a URL.");
+      }
+
       var url = readUrl(req);
       var urlError = validateUrl(url);
       if (urlError != null) {
@@ -242,6 +239,10 @@ public class WebServer {
     });
 
     wf.registerPath(DELETE, "api/websites", req -> {
+      if (!isAuthorized(req.getHeaders().valueByKey("authorization"))) {
+        return error(StatusLine.StatusCode.CODE_403_FORBIDDEN, "You need to sign in at /admin to delete a URL.");
+      }
+
       var url = readUrl(req);
       if (url == null || url.isEmpty()) {
         return error(StatusLine.StatusCode.CODE_400_BAD_REQUEST, "The URL is required.");

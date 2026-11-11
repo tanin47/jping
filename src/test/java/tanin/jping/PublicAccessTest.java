@@ -71,7 +71,9 @@ public class PublicAccessTest extends Base {
 
   @Test
   void addingRequiresCredentials() throws Exception {
-    assertEquals(401, request("POST", "/api/websites", URL_BODY, false).statusCode());
+    var response = request("POST", "/api/websites", URL_BODY, false);
+    assertEquals(403, response.statusCode());
+    assertContains(response.body(), "You need to sign in at /admin to add a URL.");
     assertEquals(List.of(), savedUrls());
 
     assertEquals(201, request("POST", "/api/websites", URL_BODY, true).statusCode());
@@ -82,7 +84,9 @@ public class PublicAccessTest extends Base {
   void deletingRequiresCredentials() throws Exception {
     db.addWebsite(URL);
 
-    assertEquals(401, request("DELETE", "/api/websites", URL_BODY, false).statusCode());
+    var response = request("DELETE", "/api/websites", URL_BODY, false);
+    assertEquals(403, response.statusCode());
+    assertContains(response.body(), "You need to sign in at /admin to delete a URL.");
     assertEquals(List.of(URL), savedUrls());
 
     assertEquals(200, request("DELETE", "/api/websites", URL_BODY, true).statusCode());
