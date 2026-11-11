@@ -1,13 +1,12 @@
 <script lang="ts">
-import { api } from './globals';
+import { IS_DEMO, api } from './globals';
 
 interface Props {
-  isDemo: boolean;
   // Called after the website has been deleted on the server.
   onRemoved: (url: string) => void;
 }
 
-let { isDemo, onRemoved }: Props = $props();
+let { onRemoved }: Props = $props();
 
 let dialog: HTMLDialogElement;
 let url: string | null = $state(null);
@@ -46,7 +45,7 @@ function reset() {
 <dialog class="modal" bind:this={dialog} onclose={reset}>
   <div class="modal-box">
     <h3 class="text-lg font-bold">Remove website?</h3>
-    {#if isDemo}
+    {#if IS_DEMO}
       <p class="py-4" data-test-id="remove-dialog-demo">You cannot delete a URL because this is a demo mode.</p>
     {:else}
       <p class="py-4">
@@ -61,7 +60,7 @@ function reset() {
       <form method="dialog">
         <button class="btn" disabled={removing} data-test-id="remove-dialog-cancel">Cancel</button>
       </form>
-      <button class="btn btn-error" onclick={confirmRemove} disabled={removing || isDemo} data-test-id="remove-dialog-confirm">
+      <button class="btn btn-error" onclick={confirmRemove} disabled={removing || IS_DEMO} data-test-id="remove-dialog-confirm">
         {#if removing}<span class="loading loading-spinner loading-sm"></span>{/if}
         Remove
       </button>

@@ -4,6 +4,9 @@
   <title>JPing</title>
   <link rel="stylesheet" href="/assets/stylesheets/tailwindbase.css">
   <link rel="shortcut icon" type="image/png" href="/assets/images/logo.png">
+  <script>
+    window.IS_DEMO = {{IS_DEMO}};
+  </script>
 </head>
 <body>
   <script src="/assets/svelte/index.js"></script>
@@ -11,7 +14,7 @@
   <div id="app"></div>
 
   <script>
-    new Index.default({target: document.getElementById('app'), props: {isDemo: {{IS_DEMO}}}});
+    new Index.default({target: document.getElementById('app')});
   </script>
 </body>
 </html>

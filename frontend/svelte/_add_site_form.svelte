@@ -1,16 +1,15 @@
 <script lang="ts">
-import { api } from './globals';
+import { IS_DEMO, api } from './globals';
 import type { WebsiteUrl } from './models';
 
 interface Props {
-  isDemo: boolean;
   // Used to catch duplicates before calling the server.
   existingUrls: string[];
   // Called after the website has been saved on the server.
   onAdded: (website: WebsiteUrl) => void;
 }
 
-let { isDemo, existingUrls, onAdded }: Props = $props();
+let { existingUrls, onAdded }: Props = $props();
 
 let newUrl = $state('');
 let error = $state('');
@@ -69,8 +68,8 @@ async function submit(event: SubmitEvent) {
     <button
       type="submit"
       class="btn btn-primary join-item"
-      disabled={adding || isDemo}
-      title={isDemo ? 'You cannot add a URL because this is a demo mode.' : undefined}
+      disabled={adding || IS_DEMO}
+      title={IS_DEMO ? 'You cannot add a URL because this is a demo mode.' : undefined}
       data-test-id="add-website-button"
     >
       {#if adding}<span class="loading loading-spinner loading-sm"></span>{/if}
