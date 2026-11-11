@@ -14,7 +14,7 @@ public class Main {
     var server = new WebServer(
       readPortFromEnv("JPING_PORT", DEFAULT_PORT),
       readPortFromEnv("JPING_SSL_PORT", DEFAULT_SSL_PORT),
-      new DatabaseService(databaseUrl)
+      databaseUrl
     );
     server.start();
     server.block();

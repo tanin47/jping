@@ -58,7 +58,7 @@ jobs:
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_ORG_TOKEN }}
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       - name: Publish Test Results
         uses: dorny/test-reporter@v1
         if: ${{ !cancelled() }}

@@ -14,7 +14,7 @@ plugins {
 group = "tanin.jping"
 version = "1.0.0"
 
-description = "JPing"
+description = "A minimal & robust website monitoring written in Java. Open-sourced, self-hosted, and small."
 
 java {
     toolchain {
@@ -29,6 +29,10 @@ java {
             }
         }
     }
+}
+
+tasks.javadoc {
+    (options as StandardJavadocDocletOptions).addBooleanOption("Xdoclint:all,-missing", true)
 }
 
 tasks.jacocoTestReport {

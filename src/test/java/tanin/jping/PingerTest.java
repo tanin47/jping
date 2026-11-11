@@ -15,17 +15,13 @@ public class PingerTest {
   DatabaseService db;
   WebServer server;
 
-  @BeforeAll
-  void setUpAll() throws Exception {
-    db = new DatabaseService(System.getenv("JPING_DATABASE_URL"));
-  }
-
   @BeforeEach
   void setUp() throws Exception {
+    server = new WebServer(PORT, -1, null, null, false, System.getenv("JPING_DATABASE_URL"));
+    db = server.db;
     try (var conn = db.connect(); var stmt = conn.createStatement()) {
       stmt.execute("TRUNCATE website_url, response, jping_uptime");
     }
-    server = new WebServer(PORT, -1, null, null, false, db);
     server.start();
   }
 
