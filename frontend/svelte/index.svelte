@@ -1,7 +1,7 @@
 <script lang="ts">
 import Button from './_button.svelte'
 
-let title = "Embeddable Java Web Framework.";
+let title = "JPing.";
 let description = "Zero Dependencies. Small footprint (500K). Support Typescripts and Svelte. Great for embedding a website on other large systems.";
 </script>
 
