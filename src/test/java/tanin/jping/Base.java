@@ -26,14 +26,14 @@ public class Base {
   WebServer server;
   DatabaseService db;
   Connection conn;
+  String databaseUrl;
   boolean shouldLoggedIn = true;
   boolean isDemo = false;
 
   @BeforeAll
   void setUpAll() throws Exception {
-    var databaseUrl = System.getenv("JPING_DATABASE_URL");
+    databaseUrl = System.getenv("JPING_DATABASE_URL");
     assertNotNull(databaseUrl, "JPING_DATABASE_URL is required. It's set in build.gradle.kts for the test task.");
-    db = new DatabaseService(databaseUrl);
 
     initializeWebDriver();
   }
@@ -63,14 +63,15 @@ public class Base {
 
   @BeforeEach
   void setUp() throws Exception {
-    // Starting the server runs the migration, so the tables exist before they're emptied below.
-    server = new WebServer(PORT, -1, null, null, isDemo, db);
-    server.start();
+    // Creating the server runs the migration, so the tables exist before they're emptied below.
+    server = new WebServer(PORT, -1, null, null, isDemo, databaseUrl);
+    db = server.db;
 
     // Start each test with an empty database.
     try (var c = db.connect(); var stmt = c.createStatement()) {
       stmt.execute("TRUNCATE website_url, response, jping_uptime");
     }
+    server.start();
   }
 
   @AfterEach

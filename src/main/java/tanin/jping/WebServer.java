@@ -52,22 +52,22 @@ public class WebServer {
   final DatabaseService db;
   final Pinger pinger;
 
-  WebServer(int port, int sslPort, DatabaseService db) {
+  public WebServer(int port, int sslPort, String databaseUrl) throws Exception {
     this(
       port,
       sslPort,
       System.getenv("JPING_USERNAME"),
       System.getenv("JPING_PASSWORD"),
       "true".equalsIgnoreCase(System.getenv("JPING_DEMO")),
-      db
+      databaseUrl
     );
   }
 
-  WebServer(int port, int sslPort, String username, String password, boolean isDemo, DatabaseService db) {
+  public WebServer(int port, int sslPort, String username, String password, boolean isDemo, String databaseUrl) throws Exception {
     this.port = port;
     this.isDemo = isDemo;
     this.sslPort = sslPort;
-    this.db = db;
+    this.db = new DatabaseService(databaseUrl);
     this.pinger = new Pinger(db);
     this.username = username;
     this.password = password;

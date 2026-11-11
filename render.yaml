@@ -5,9 +5,16 @@ services:
     runtime: image
     image:
       url: docker.io/tanin47/jping:v1.0.0
-    dockerCommand: java -jar jping-1.0.0.jar
     healthCheckPath: /healthcheck
     envVars:
       - key: PORT
         value: 9090
+      - key: JPING_PORT
+        value: 9090
+      - key: JPING_DATABASE_URL
+        sync: false
+      - key: JPING_USERNAME
+        sync: false
+      - key: JPING_PASSWORD
+        sync: false
     autoDeploy: true
