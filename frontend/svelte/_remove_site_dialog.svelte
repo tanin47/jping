@@ -1,23 +1,32 @@
 <script lang="ts">
+import { api } from './globals';
+
+interface Props {
+  // Called after the website has been deleted on the server.
+  onRemoved: (url: string) => void;
+}
+
+let { onRemoved }: Props = $props();
+
 let dialog: HTMLDialogElement;
 let url: string | null = $state(null);
-let onConfirm: (() => Promise<void>) | null = null;
 let removing = $state(false);
 let error = $state('');
 
-export function open(siteUrl: string, confirm: () => Promise<void>) {
+export function open(siteUrl: string) {
   url = siteUrl;
-  onConfirm = confirm;
   error = '';
   dialog.showModal();
 }
 
 async function confirmRemove() {
-  if (!onConfirm) return;
+  if (!url) return;
+  const removedUrl = url;
   removing = true;
   error = '';
   try {
-    await onConfirm();
+    await api('DELETE', '/api/websites', { url: removedUrl });
+    onRemoved(removedUrl);
     dialog.close();
   } catch (e) {
     // Keep the dialog open so the user can see what went wrong and retry.
@@ -29,7 +38,6 @@ async function confirmRemove() {
 
 function reset() {
   url = null;
-  onConfirm = null;
   error = '';
 }
 </script>

@@ -17,7 +17,17 @@ CREATE TABLE response (
 
 CREATE INDEX response_url_started_at_idx ON response (url, started_at);
 
+-- The periods when JPing itself was running.
+CREATE TABLE jping_uptime (
+  started_at TIMESTAMPTZ NOT NULL,
+  -- Moved forward while JPing keeps running, so a gap until the next started_at means JPing was down.
+  ended_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX jping_uptime_started_at_idx ON jping_uptime (started_at);
+
 # --- !Downs
 
+DROP TABLE jping_uptime;
 DROP TABLE response;
 DROP TABLE website_url;

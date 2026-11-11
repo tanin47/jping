@@ -68,7 +68,7 @@ public class Base {
 
     // Start each test with an empty database.
     try (var c = db.connect(); var stmt = c.createStatement()) {
-      stmt.execute("TRUNCATE website_url, response");
+      stmt.execute("TRUNCATE website_url, response, jping_uptime");
     }
   }
 
