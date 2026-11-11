@@ -11,10 +11,10 @@ plugins {
     id("com.gradleup.shadow") version "9.6.1"
 }
 
-group = "tanin.ejwf"
+group = "tanin.jping"
 version = "1.0.0"
 
-description = "Embeddable Java Web Framework (EJWF)"
+description = "JPing"
 
 java {
     toolchain {
@@ -58,6 +58,8 @@ tasks.named<Test>("test") {
 
     maxHeapSize = "1G"
 
+    environment("JPING_LOCAL_DEV", "true")
+
     testLogging {
         events("started", "passed", "skipped", "failed")
         showStandardStreams = true
@@ -70,23 +72,27 @@ tasks.named<Test>("test") {
 }
 
 application {
-    mainClass.set("tanin.ejwf.Main")
+    mainClass.set("tanin.jping.Main")
+}
+
+tasks.named<JavaExec>("run") {
+    environment("JPING_LOCAL_DEV", "true")
 }
 
 publishing {
     publications {
         create<MavenPublication>("maven") {
             groupId = "io.github.tanin47"
-            artifactId = "embeddable-java-web-framework"
+            artifactId = "jping"
             version = project.version.toString()
             artifact(tasks.shadowJar)
             artifact(tasks["sourcesJar"])
             artifact(tasks["javadocJar"])
 
             pom {
-                name.set("Embeddable Java Web Framework")
-                description.set("An example of Embeddable Java Web Framework that you can embed into your larger application.")
-                url.set("https://github.com/tanin47/embeddable-java-web-framework")
+                name.set("JPing")
+                description.set("An example of JPing that you can embed into your larger application.")
+                url.set("https://github.com/tanin47/jping")
                 inceptionYear.set("2025")
                 licenses {
                     license {
@@ -101,9 +107,9 @@ publishing {
                     }
                 }
                 scm {
-                    connection.set("scm:git:https://github.com/tanin47/embeddable-java-web-framework.git")
-                    developerConnection.set("scm:git:ssh://github.com/tanin47/embeddable-java-web-framework.git")
-                    url.set("http://github.com/tanin47/embeddable-java-web-framework")
+                    connection.set("scm:git:https://github.com/tanin47/jping.git")
+                    developerConnection.set("scm:git:ssh://github.com/tanin47/jping.git")
+                    url.set("http://github.com/tanin47/jping")
                 }
             }
         }
@@ -185,14 +191,13 @@ tasks.named("sourcesJar") {
 
 tasks.shadowJar {
     archiveClassifier.set("") // Remove the suffix -all.
-    relocate("com", "tanin.ejwf.com")
+    relocate("com", "tanin.jping.com")
     exclude("META-INF/MANIFEST.MF")
-    exclude("local_dev_marker.ejwf")
 
 }
 
 tasks.jar {
-    manifest.attributes["Main-Class"] = "tanin.ejwf.Main"
+    manifest.attributes["Main-Class"] = "tanin.jping.Main"
 }
 
 // For CI validation.

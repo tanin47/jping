@@ -1,15 +1,15 @@
-Embeddable Java Web Framework
+JPing
 ==============================
 
-[![Sonatype Central](https://maven-badges.sml.io/sonatype-central/io.github.tanin47/embeddable-java-web-framework/badge.svg)](https://central.sonatype.com/artifact/io.github.tanin47/embeddable-java-web-framework)
-![Github Actions](https://github.com/tanin47/embeddable-java-web-framework/actions/workflows/ci.yml/badge.svg?branch=main)
-[![codecov](https://codecov.io/gh/tanin47/embeddable-java-web-framework/graph/badge.svg?token=BGQU70MAUP)](https://codecov.io/gh/tanin47/embeddable-java-web-framework)
+[![Sonatype Central](https://maven-badges.sml.io/sonatype-central/io.github.tanin47/jping/badge.svg)](https://central.sonatype.com/artifact/io.github.tanin47/jping)
+![Github Actions](https://github.com/tanin47/jping/actions/workflows/ci.yml/badge.svg?branch=main)
+[![codecov](https://codecov.io/gh/tanin47/jping/graph/badge.svg?token=BGQU70MAUP)](https://codecov.io/gh/tanin47/jping)
 
 
-Embeddable Java Web Framework (EJWF) is a Java project template for building a website with a tiny footprint. 
+JPing is a Java project template for building a website with a tiny footprint. 
 It is suitable for <ins>a sidecar-style website embeddable on a larger JVM system</ins> and a standalone lightweight website.
 
-The main selling point of EJWF is that it comes with productive and useful conventions and libraries such as:
+The main selling point of JPing is that it comes with productive and useful conventions and libraries such as:
 
 1. Support Typescripts + Svelte + Tailwind + DaisyUI with Hot-Reload Module (HMR).
 2. Support packaging a fat JAR with [shading](https://stackoverflow.com/questions/13620281/what-is-the-maven-shade-plugin-used-for-and-why-would-you-want-to-relocate-java). 
@@ -19,16 +19,16 @@ The main selling point of EJWF is that it comes with productive and useful conve
 5. Github actions for testing, code coverage reporting, and publishing have been implemented.
 
 In contrast, most of the lightweight web frameworks focus on being a bare metal web server serving HTML and JSON. 
-They don't provide support for any frontend framework like React or Svelte; you would have to do it yourself. This is exactly what EJWF provides.
+They don't provide support for any frontend framework like React or Svelte; you would have to do it yourself. This is exactly what JPing provides.
 
-Initially, EJWF was built as a foundation for [Backdoor](https://github.com/tanin47/backdoor), a self-hosted database querying and editing tool, where
+Initially, JPing was built as a foundation for [Backdoor](https://github.com/tanin47/backdoor), a self-hosted database querying and editing tool, where
 you can embed it into your larger application like SpringBoot or PlayFramework.
 
 How to develop
 ---------------
 
 1. Run `npm install` to install all dependencies.
-2. Run `./gradlew run` to run the web server.
+2. Run `./gradlew run` to run the web server. It sets `JPING_LOCAL_DEV=true`, which turns on the dev mode (hot-reloading).
 3. On a separate terminal, run `npm run hmr` in order to hot-reload the frontend code changes.
 
 
@@ -37,16 +37,16 @@ Publish JAR
 
 This flow has been set up as the Github Actions workflow: `publish-jar`.
 
-EJWF is a template repository with collections of libraries and conventions. It's important that you understand
+JPing is a template repository with collections of libraries and conventions. It's important that you understand
 each build process and are able to customize to your needs.
 
 Here's how you can build your fat JAR:
 
 1. Run `./gradlew clean publish`. This step is IMPORTANT to clean out the previous versions.
 
-The far JAR is built at `./build/libs/embeddablee-java-web-framework-VERSION.jar`
+The far JAR is built at `./build/libs/jping-VERSION.jar`
 
-You can run your server with: `java -jar ./build/libs/embeddable-java-web-framework-VERSION.jar`
+You can run your server with: `java -jar ./build/libs/jping-VERSION.jar`
 
 To publish to a Maven repository, please follow the below steps:
 
@@ -59,11 +59,11 @@ Publish Docker
 
 This flow has been set up as a part of the Github Actions workflow: `create-release-and-docker`.
 
-1. Run `docker buildx build --platform linux/amd64,linux/arm64 -t embeddable-java-web-framework:v1.0.0 .`
+1. Run `docker buildx build --platform linux/amd64,linux/arm64 -t jping:v1.0.0 .`
 2. Test locally with:
-   `docker run -p 9090:9090 --entrypoint "" embeddable-java-web-framework:v1.0.0 java -jar embeddable-java-web-framework-1.0.0.jar -port 9090`
-3. Run: `docker tag embeddable-java-web-framework:v1.0.0 tanin47/embeddable-java-web-framework:v1.0.0`
-4. Run: `docker push tanin47/embeddable-java-web-framework:v1.0.0`
+   `docker run -p 9090:9090 --entrypoint "" jping:v1.0.0 java -jar jping-1.0.0.jar -port 9090`
+3. Run: `docker tag jping:v1.0.0 tanin47/jping:v1.0.0`
+4. Run: `docker push tanin47/jping:v1.0.0`
 5. Go to Render.com, sync the blueprint, and test that it works
 
 Release a new version
@@ -72,14 +72,14 @@ Release a new version
 1. Create an empty release with a new tag. The tag must follow the format: `vX.Y.Z`.
 2. Go to Actions and wait for the `create-release-and-docker` (which is triggered automatically) workflow to finish.
 3. Test the docker with
-   `docker run -p 9090:9090 --entrypoint "" tanin47/embeddable-java-web-framework:v1.0.0 java -jar embeddable-java-web-framework-1.0.0.jar -port 9090`.
+   `docker run -p 9090:9090 --entrypoint "" tanin47/jping:v1.0.0 java -jar jping-1.0.0.jar -port 9090`.
 4. Go to Actions and trigger the workflow `publish-jar` on the tag `vX.Y.Z` in order to publish the JAR to Central
    Sonatype.
 
 How to run
 ------------
 
-There are 2 ways to run EWJF:
+There are 2 ways to run JPing:
 
 1. Run as a standalone: JAR, Docker, and Render.com
 2. Embed your website into a larger system
@@ -88,32 +88,32 @@ There are 2 ways to run EWJF:
 
 __<ins>Run from the JAR file</ins>__
 
-First, you can download the `embeddable-java-web-framework-VERSION.jar` file from
-the [Releases](https://github.com/tanin47/embeddable-java-web-framework/releases) page.
+First, you can download the `jping-VERSION.jar` file from
+the [Releases](https://github.com/tanin47/jping/releases) page.
 
 Then, you can run the command below:
 
 ```
-java -jar embeddable-java-web-framework-1.0.0.jar
+java -jar jping-1.0.0.jar
 ```
 
 Then, you can visit http://localhost:9090 
 
 __<ins>Use Docker</ins>__
 
-The docker image is here: https://hub.docker.com/repository/docker/tanin47/embeddable-java-web-framework
+The docker image is here: https://hub.docker.com/repository/docker/tanin47/jping
 
 ```
 docker run -p 9090:9090 \
            --entrypoint "" \
            --pull always \
-           tanin47/embeddable-java-web-framework:v1.0.0 \
-           java -jar embeddable-java-web-framework-1.0.0.jar
+           tanin47/jping:v1.0.0 \
+           java -jar jping-1.0.0.jar
 ```
 
 __<ins>Use Render.com</ins>__
 
-The file [render.yaml](./render.yaml) shows a blueprint example of how to run EWJF on Render.
+The file [render.yaml](./render.yaml) shows a blueprint example of how to run JPing on Render.
 
 ### 2. Embed your website into a larger system
 
@@ -125,7 +125,7 @@ your customer can follow the below steps in order to embed your website into the
 ```
 <dependency>
     <groupId>io.github.tanin47</groupId>
-    <artifactId>embeddable-java-web-framework</artifactId>
+    <artifactId>jping</artifactId>
     <version>1.0.0</version>
 </dependency>
 ```
@@ -133,7 +133,7 @@ your customer can follow the below steps in order to embed your website into the
 2. Instantiate the website with the port 9090 when the larger system initializes:
 
 ```java
-var main = new tanin.ejwf.Main();
+var main = new tanin.jping.Main();
 main.start(9090);
 ```
 
@@ -158,16 +158,16 @@ The above options also have external dependencies.
 
 Some services like Render or Heroku allow only one port to be served.
 
-What you can do here is to designate a path e.g. `/ejwf` where it proxies to EWJF.
+What you can do here is to designate a path e.g. `/jping` where it proxies to JPing.
 
 An example proxy code that requires no dependency would look like below:
 
 ```java
-// In your endpoint of /ejwf
+// In your endpoint of /jping
 var client = HttpClient.newHttpClient();
 var httpRequest = HttpRequest
     .newBuilder()
-    .uri(URI.create("http://localhost:9090" + path)) // The path without /ejwf
+    .uri(URI.create("http://localhost:9090" + path)) // The path without /jping
     .method("GET", HttpRequest.BodyPublishers.ofByteArray(new byte[0])) // Set the method and body in bytes
     .headers(/* ... */) // Forward the headers as-is.    
     .build();

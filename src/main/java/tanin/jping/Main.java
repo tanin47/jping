@@ -1,4 +1,4 @@
-package tanin.ejwf;
+package tanin.jping;
 
 
 import com.renomad.minum.web.FullSystem;
@@ -17,7 +17,7 @@ public class Main {
   private static final Logger logger = Logger.getLogger(Main.class.getName());
 
   static {
-    try (var configFile = Main.class.getResourceAsStream("/ejwf_default_logging.properties")) {
+    try (var configFile = Main.class.getResourceAsStream("/jping_default_logging.properties")) {
       LogManager.getLogManager().readConfiguration(configFile);
       logger.info("The log config (default_logging.properties) has been loaded.");
     } catch (IOException e) {
@@ -56,7 +56,7 @@ public class Main {
       GET,
       "healthcheck",
       req -> {
-        return Response.buildResponse(StatusLine.StatusCode.CODE_200_OK, Map.of("Content-Type", "text/plain"), "OK EWJF");
+        return Response.buildResponse(StatusLine.StatusCode.CODE_200_OK, Map.of("Content-Type", "text/plain"), "OK JPing");
       }
     );
   }
