@@ -7,8 +7,6 @@ services:
       url: docker.io/tanin47/jping:v1.0.0
     healthCheckPath: /healthcheck
     envVars:
-      - key: PORT
-        value: 9090
       - key: JPING_PORT
         value: 9090
       - key: JPING_DATABASE_URL
@@ -16,5 +14,7 @@ services:
       - key: JPING_USERNAME
         sync: false
       - key: JPING_PASSWORD
+        sync: false
+      - key: JPING_DEMO
         sync: false
     autoDeploy: true

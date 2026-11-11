@@ -82,7 +82,7 @@ To keep secrets out of your shell history, put the env variables in a file and u
 __<ins>Use Render.com</ins>__
 
 The file [render.yaml](./render.yaml) shows a blueprint example of how to run JPing on Render. Render asks for
-`JPING_DATABASE_URL`, `JPING_USERNAME`, and `JPING_PASSWORD` when you create the service from the blueprint.
+`JPING_DATABASE_URL`, `JPING_USERNAME`, `JPING_PASSWORD`, and `JPING_DEMO` when you create the service from the blueprint.
 
 ### 2. Embed JPing into a larger system
 
