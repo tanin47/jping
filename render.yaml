@@ -15,6 +15,6 @@ services:
         sync: false
       - key: JPING_PASSWORD
         sync: false
-      - key: JPING_DEMO
+      - key: JPING_PUBLIC_ACCESS
         sync: false
     autoDeploy: true

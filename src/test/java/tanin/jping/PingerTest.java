@@ -17,7 +17,7 @@ public class PingerTest {
 
   @BeforeEach
   void setUp() throws Exception {
-    server = new WebServer(PORT, -1, null, null, false, System.getenv("JPING_DATABASE_URL"));
+    server = new WebServer(PORT, -1, "admin", "secret", false, System.getenv("JPING_DATABASE_URL"));
     db = server.db;
     try (var conn = db.connect(); var stmt = conn.createStatement()) {
       stmt.execute("TRUNCATE website_url, response, jping_uptime");

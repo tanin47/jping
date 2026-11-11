@@ -11,6 +11,14 @@ public class Main {
       System.exit(1);
     }
 
+    for (var name : new String[]{"JPING_USERNAME", "JPING_PASSWORD"}) {
+      var value = System.getenv(name);
+      if (value == null || value.isEmpty()) {
+        System.err.println(name + " is required.");
+        System.exit(1);
+      }
+    }
+
     var server = new WebServer(
       readPortFromEnv("JPING_PORT", DEFAULT_PORT),
       readPortFromEnv("JPING_SSL_PORT", DEFAULT_SSL_PORT),

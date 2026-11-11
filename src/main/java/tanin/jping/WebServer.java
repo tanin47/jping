@@ -7,6 +7,7 @@ import com.eclipsesource.json.JsonValue;
 import com.renomad.minum.web.FullSystem;
 import com.renomad.minum.web.IRequest;
 import com.renomad.minum.web.IResponse;
+import com.renomad.minum.web.RequestLine;
 import com.renomad.minum.web.Response;
 import com.renomad.minum.web.StatusLine;
 
@@ -47,8 +48,7 @@ public class WebServer {
 
   final String username;
   final String password;
-  final boolean authEnabled;
-  final boolean isDemo;
+  final boolean isPublicAccess;
   final DatabaseService db;
   final Pinger pinger;
 
@@ -58,30 +58,49 @@ public class WebServer {
       sslPort,
       System.getenv("JPING_USERNAME"),
       System.getenv("JPING_PASSWORD"),
-      "true".equalsIgnoreCase(System.getenv("JPING_DEMO")),
+      "true".equalsIgnoreCase(System.getenv("JPING_PUBLIC_ACCESS")),
       databaseUrl
     );
   }
 
-  public WebServer(int port, int sslPort, String username, String password, boolean isDemo, String databaseUrl) throws Exception {
+  public WebServer(
+    int port,
+    int sslPort,
+    String username,
+    String password,
+    boolean isPublicAccess,
+    String databaseUrl
+  ) throws Exception {
+    if (username == null || username.isEmpty() || password == null || password.isEmpty()) {
+      throw new IllegalArgumentException("The username and password are required.");
+    }
+
     this.port = port;
-    this.isDemo = isDemo;
     this.sslPort = sslPort;
-    this.db = new DatabaseService(databaseUrl);
-    this.pinger = new Pinger(db);
     this.username = username;
     this.password = password;
-    this.authEnabled = username != null && !username.isEmpty() && password != null && !password.isEmpty();
+    this.isPublicAccess = isPublicAccess;
+    this.db = new DatabaseService(databaseUrl);
+    this.pinger = new Pinger(db);
 
-    if (authEnabled) {
-      logger.info("HTTP Basic Authentication is enabled.");
-    } else {
-      logger.warning("HTTP Basic Authentication is disabled. Set JPING_USERNAME and JPING_PASSWORD to enable it.");
+    if (isPublicAccess) {
+      logger.info("The public access is enabled. Anyone can view the uptimes, and /admin is needed to add or delete URLs.");
     }
+  }
 
-    if (isDemo) {
-      logger.info("Running in the demo mode. Adding and deleting URLs are disabled.");
+  /**
+   * The healthcheck is always open so load balancers can reach it.
+   * /admin and any request that changes data always require the credentials.
+   * Everything else is open only when the public access is enabled.
+   */
+  boolean requiresAuth(RequestLine.Method method, String path) {
+    if (path.equals("healthcheck")) {
+      return false;
     }
+    if (path.equals("admin") || method != GET) {
+      return true;
+    }
+    return !isPublicAccess;
   }
 
   boolean isAuthorized(List<String> authHeaders) {
@@ -126,8 +145,9 @@ public class WebServer {
       var request = inputs.clientRequest();
       var path = request.getRequestLine().getPathDetails().getIsolatedPath();
 
-      // The healthcheck stays open so load balancers can reach it without credentials.
-      if (authEnabled && !path.equals("healthcheck") && !isAuthorized(request.getHeaders().valueByKey("authorization"))) {
+      var method = request.getRequestLine().getMethod();
+
+      if (requiresAuth(method, path) && !isAuthorized(request.getHeaders().valueByKey("authorization"))) {
         return Response.buildResponse(
           StatusLine.StatusCode.CODE_401_UNAUTHORIZED,
           Map.of(
@@ -141,18 +161,9 @@ public class WebServer {
       return inputs.endpoint().apply(request);
     });
 
-    wf.registerPath(
-      GET,
-      "",
-      r -> {
-        logger.info("Serve /");
-        try (var stream = WebServer.class.getResourceAsStream("/html/index.html")) {
-          assert stream != null;
-          String content = new String(stream.readAllBytes()).replace("{{IS_DEMO}}", String.valueOf(isDemo));
-          return Response.htmlOk(content);
-        }
-      }
-    );
+    // Without the public access, / already requires the credentials, so it shows the admin controls too.
+    wf.registerPath(GET, "", r -> serveIndex(!isPublicAccess));
+    wf.registerPath(GET, "admin", r -> serveIndex(true));
 
     wf.registerPath(
       GET,
@@ -215,10 +226,6 @@ public class WebServer {
     });
 
     wf.registerPath(POST, "api/websites", req -> {
-      if (isDemo) {
-        return error(StatusLine.StatusCode.CODE_403_FORBIDDEN, "You cannot add a URL because this is a demo mode.");
-      }
-
       var url = readUrl(req);
       var urlError = validateUrl(url);
       if (urlError != null) {
@@ -235,10 +242,6 @@ public class WebServer {
     });
 
     wf.registerPath(DELETE, "api/websites", req -> {
-      if (isDemo) {
-        return error(StatusLine.StatusCode.CODE_403_FORBIDDEN, "You cannot delete a URL because this is a demo mode.");
-      }
-
       var url = readUrl(req);
       if (url == null || url.isEmpty()) {
         return error(StatusLine.StatusCode.CODE_400_BAD_REQUEST, "The URL is required.");
@@ -255,6 +258,14 @@ public class WebServer {
   }
 
   static final int MAX_URL_LENGTH = 2048;
+
+  static IResponse serveIndex(boolean isAdmin) throws IOException {
+    try (var stream = WebServer.class.getResourceAsStream("/html/index.html")) {
+      assert stream != null;
+      var content = new String(stream.readAllBytes()).replace("{{IS_ADMIN}}", String.valueOf(isAdmin));
+      return Response.htmlOk(content);
+    }
+  }
 
   /** Reads the "url" field from a JSON body. Returns null if the body isn't a JSON object with a string "url". */
   static String readUrl(IRequest req) {

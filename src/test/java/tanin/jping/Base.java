@@ -8,10 +8,16 @@ import org.openqa.selenium.interactions.Actions;
 import org.openqa.selenium.logging.LogType;
 import org.openqa.selenium.logging.LoggingPreferences;
 
+import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.List;
 import java.util.logging.Level;
 
@@ -20,6 +26,8 @@ import static org.junit.jupiter.api.Assertions.*;
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 public class Base {
   static int PORT = 9091;
+  static final String USERNAME = "admin";
+  static final String PASSWORD = "secret";
   static boolean IS_MAC = System.getProperty("os.name").toLowerCase().contains("mac");
 
   WebDriver webDriver;
@@ -27,8 +35,7 @@ public class Base {
   DatabaseService db;
   Connection conn;
   String databaseUrl;
-  boolean shouldLoggedIn = true;
-  boolean isDemo = false;
+  boolean isPublicAccess = false;
 
   @BeforeAll
   void setUpAll() throws Exception {
@@ -59,12 +66,14 @@ public class Base {
     options.setCapability("goog:loggingPrefs", logPrefs);
 
     webDriver = new ChromeDriver(options);
+    // Answers the Basic Authentication prompt whenever the server asks for the credentials.
+    ((HasAuthentication) webDriver).register(UsernameAndPassword.of(USERNAME, PASSWORD));
   }
 
   @BeforeEach
   void setUp() throws Exception {
     // Creating the server runs the migration, so the tables exist before they're emptied below.
-    server = new WebServer(PORT, -1, null, null, isDemo, databaseUrl);
+    server = new WebServer(PORT, -1, USERNAME, PASSWORD, isPublicAccess, databaseUrl);
     db = server.db;
 
     // Start each test with an empty database.
@@ -84,6 +93,19 @@ public class Base {
   @AfterAll
   void tearDownAll() throws SQLException {
     webDriver.close();
+  }
+
+  HttpResponse<String> request(String method, String path, String body, boolean withCredentials) throws Exception {
+    var builder = HttpRequest.newBuilder(URI.create("http://localhost:" + PORT + path))
+      .method(method, body == null ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofString(body));
+    if (body != null) {
+      builder.header("Content-Type", "application/json");
+    }
+    if (withCredentials) {
+      var token = Base64.getEncoder().encodeToString((USERNAME + ":" + PASSWORD).getBytes(StandardCharsets.UTF_8));
+      builder.header("Authorization", "Basic " + token);
+    }
+    return HttpClient.newHttpClient().send(builder.build(), HttpResponse.BodyHandlers.ofString());
   }
 
   void go(String path) {

@@ -5,7 +5,7 @@ import AddSiteForm from './_add_site_form.svelte';
 import JpingUptimeBar from './_jping_uptime_bar.svelte';
 import PendingBar from './_pending_bar.svelte';
 import RemoveSiteDialog from './_remove_site_dialog.svelte';
-import { api } from './globals';
+import { IS_ADMIN, api } from './globals';
 import type { Bucket, Period, Site, Status, WebsiteUrl } from './models';
 import {
   BAR_COLOR,
@@ -172,9 +172,11 @@ function onSiteRemoved(url: string) {
           <div class="text-lg font-bold {TEXT_COLOR[statusOf(uptime)]}">{formatPercent(uptime)}</div>
           <div class="text-xs opacity-60">uptime</div>
         </div>
-        <button class="btn btn-ghost btn-sm btn-square" aria-label="Remove {site.url}" title="Remove" data-test-id="remove-website-button" data-test-value={site.url} onclick={() => askToRemove(site)}>
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-        </button>
+        {#if IS_ADMIN}
+          <button class="btn btn-ghost btn-sm btn-square" aria-label="Remove {site.url}" title="Remove" data-test-id="remove-website-button" data-test-value={site.url} onclick={() => askToRemove(site)}>
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+        {/if}
       </div>
 
       <div class="flex h-8 gap-px">
@@ -228,7 +230,9 @@ function onSiteRemoved(url: string) {
     </select>
   </header>
 
-  <AddSiteForm existingUrls={sites.map((s) => s.url)} onAdded={onSiteAdded} />
+  {#if IS_ADMIN}
+    <AddSiteForm existingUrls={sites.map((s) => s.url)} onAdded={onSiteAdded} />
+  {/if}
 
   <div class="flex flex-wrap gap-4 text-sm opacity-80">
     <span class="flex items-center gap-2"><span class="inline-block h-3 w-3 rounded-sm bg-success"></span>Up</span>
@@ -252,7 +256,7 @@ function onSiteRemoved(url: string) {
       {#each sites as site (site.url)}
         {@render timeline(site)}
       {:else}
-        <div class="text-center opacity-60 py-8">No URLs yet. Add one above.</div>
+        <div class="text-center opacity-60 py-8">No URLs yet.{#if IS_ADMIN} Add one above.{/if}</div>
       {/each}
     {/if}
   </section>
