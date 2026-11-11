@@ -13,8 +13,11 @@ import com.renomad.minum.web.StatusLine;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
@@ -152,6 +155,50 @@ public class WebServer {
       return json(StatusLine.StatusCode.CODE_200_OK, new JsonObject().add("websites", websites));
     });
 
+    // GET /api/websites/uptime?start=<ISO-8601 instant>&end=<ISO-8601 instant>
+    wf.registerPath(GET, "api/websites/uptime", req -> {
+      var range = readTimeRange(req);
+      if (range.error() != null) {
+        return error(StatusLine.StatusCode.CODE_400_BAD_REQUEST, range.error());
+      }
+
+      var websites = new JsonArray();
+      for (var website : db.listWebsiteUptimes(range.start(), range.end())) {
+        websites.add(toJson(website));
+      }
+      return json(
+        StatusLine.StatusCode.CODE_200_OK,
+        new JsonObject()
+          .add("start", range.start().toString())
+          .add("end", range.end().toString())
+          .add("websites", websites)
+      );
+    });
+
+    // GET /api/jping/uptime?start=<ISO-8601 instant>&end=<ISO-8601 instant>
+    wf.registerPath(GET, "api/jping/uptime", req -> {
+      var range = readTimeRange(req);
+      if (range.error() != null) {
+        return error(StatusLine.StatusCode.CODE_400_BAD_REQUEST, range.error());
+      }
+
+      var intervals = new JsonArray();
+      for (var interval : db.listJpingUpIntervals(range.start(), range.end())) {
+        intervals.add(
+          new JsonObject()
+            .add("startedAt", interval.startedAt().toString())
+            .add("endedAt", interval.endedAt().toString())
+        );
+      }
+      return json(
+        StatusLine.StatusCode.CODE_200_OK,
+        new JsonObject()
+          .add("start", range.start().toString())
+          .add("end", range.end().toString())
+          .add("intervals", intervals)
+      );
+    });
+
     wf.registerPath(POST, "api/websites", req -> {
       var url = readUrl(req);
       var urlError = validateUrl(url);
@@ -215,6 +262,54 @@ public class WebServer {
       return "This is not a valid URL.";
     }
     return null;
+  }
+
+  /** The start and end query params. error is set (and start/end are null) when they're missing or invalid. */
+  record TimeRange(Instant start, Instant end, String error) {}
+
+  static TimeRange readTimeRange(IRequest req) {
+    var query = req.getRequestLine().queryString();
+    var start = parseInstant(query.get("start"));
+    var end = parseInstant(query.get("end"));
+    if (start == null || end == null) {
+      return new TimeRange(null, null, "start and end are required ISO-8601 instants (e.g. 2026-11-11T00:00:00Z).");
+    }
+    if (!start.isBefore(end)) {
+      return new TimeRange(null, null, "start must be before end.");
+    }
+    return new TimeRange(start, end, null);
+  }
+
+  /** Parses a URL-encoded ISO-8601 instant from the query string. Returns null when it's missing or invalid. */
+  static Instant parseInstant(String raw) {
+    if (raw == null || raw.isEmpty()) {
+      return null;
+    }
+    try {
+      // Minum doesn't decode query string values.
+      return Instant.parse(URLDecoder.decode(raw, StandardCharsets.UTF_8));
+    } catch (DateTimeParseException | IllegalArgumentException e) {
+      return null;
+    }
+  }
+
+  static JsonObject toJson(DatabaseService.WebsiteUrlUptime website) {
+    var buckets = new JsonArray();
+    for (var bucket : website.buckets()) {
+      var uptime = bucket.uptime();
+      buckets.add(
+        new JsonObject()
+          .add("start", bucket.start().toString())
+          .add("end", bucket.end().toString())
+          .add("checks", bucket.checks())
+          .add("successfulChecks", bucket.successfulChecks())
+          .add("uptime", uptime == null ? Json.NULL : Json.value(uptime))
+      );
+    }
+    return new JsonObject()
+      .add("url", website.url())
+      .add("status", website.status())
+      .add("buckets", buckets);
   }
 
   static JsonObject toJson(DatabaseService.WebsiteUrl website) {

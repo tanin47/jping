@@ -67,7 +67,7 @@ async function submit(event: SubmitEvent) {
     />
     <button type="submit" class="btn btn-primary join-item" disabled={adding} data-test-id="add-website-button">
       {#if adding}<span class="loading loading-spinner loading-sm"></span>{/if}
-      Add website
+      Add URL
     </button>
   </div>
   {#if error}
