@@ -26,13 +26,14 @@ public class DeleteWebsiteTest extends Base {
     try (
       var c = db.connect();
       var stmt = c.prepareStatement(
-        "INSERT INTO response (url, started_at, finished_at, response_code) VALUES (?, ?, ?, 200)"
+        "INSERT INTO response (url, scheduled_at, started_at, finished_at, response_code) VALUES (?, ?, ?, ?, 200)"
       )
     ) {
       var now = java.sql.Timestamp.from(Instant.now());
       stmt.setString(1, url);
       stmt.setTimestamp(2, now);
       stmt.setTimestamp(3, now);
+      stmt.setTimestamp(4, now);
       stmt.executeUpdate();
     }
   }

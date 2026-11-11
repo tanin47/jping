@@ -7,6 +7,8 @@ CREATE TABLE website_url (
 
 CREATE TABLE response (
   url TEXT NOT NULL REFERENCES website_url (url) ON DELETE CASCADE,
+  -- The point in time this check represents. started_at may drift from it when the server is busy.
+  scheduled_at TIMESTAMPTZ NOT NULL,
   started_at TIMESTAMPTZ NOT NULL,
   finished_at TIMESTAMPTZ,
   -- NULL when no HTTP response was received (e.g. timeout or connection error).
@@ -15,7 +17,7 @@ CREATE TABLE response (
   error TEXT
 );
 
-CREATE INDEX response_url_started_at_idx ON response (url, started_at);
+CREATE INDEX response_url_scheduled_at_idx ON response (url, scheduled_at);
 
 -- The periods when JPing itself was running.
 CREATE TABLE jping_uptime (

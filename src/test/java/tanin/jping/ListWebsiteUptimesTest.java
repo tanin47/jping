@@ -33,15 +33,18 @@ public class ListWebsiteUptimesTest {
     db.addWebsite(URL, "active");
   }
 
-  void addCheck(Instant startedAt, Integer responseCode, boolean finished) throws Exception {
+  void addCheck(Instant scheduledAt, Integer responseCode, boolean finished) throws Exception {
     try (
       var conn = db.connect();
-      var stmt = conn.prepareStatement("INSERT INTO response (url, started_at, finished_at, response_code) VALUES (?, ?, ?, ?)")
+      var stmt = conn.prepareStatement(
+        "INSERT INTO response (url, scheduled_at, started_at, finished_at, response_code) VALUES (?, ?, ?, ?, ?)"
+      )
     ) {
       stmt.setString(1, URL);
-      stmt.setTimestamp(2, Timestamp.from(startedAt));
-      stmt.setTimestamp(3, finished ? Timestamp.from(startedAt.plusSeconds(1)) : null);
-      stmt.setObject(4, responseCode);
+      stmt.setTimestamp(2, Timestamp.from(scheduledAt));
+      stmt.setTimestamp(3, Timestamp.from(scheduledAt));
+      stmt.setTimestamp(4, finished ? Timestamp.from(scheduledAt.plusSeconds(1)) : null);
+      stmt.setObject(5, responseCode);
       stmt.executeUpdate();
     }
   }

@@ -71,15 +71,16 @@ public class PingerTest {
     assertResponse(url, minute, null, "ConnectException");
   }
 
-  void assertResponse(String url, Instant startedAt, Integer responseCode, String errorPrefix) throws Exception {
+  void assertResponse(String url, Instant scheduledAt, Integer responseCode, String errorPrefix) throws Exception {
     try (
       var conn = db.connect();
-      var stmt = conn.prepareStatement("SELECT started_at, finished_at, response_code, error FROM response WHERE url = ?")
+      var stmt = conn.prepareStatement("SELECT scheduled_at, started_at, finished_at, response_code, error FROM response WHERE url = ?")
     ) {
       stmt.setString(1, url);
       try (var rs = stmt.executeQuery()) {
         assertTrue(rs.next());
-        assertEquals(startedAt, rs.getTimestamp("started_at").toInstant());
+        assertEquals(scheduledAt, rs.getTimestamp("scheduled_at").toInstant());
+        assertFalse(rs.getTimestamp("started_at").toInstant().isBefore(scheduledAt));
         assertNotNull(rs.getTimestamp("finished_at"));
         assertEquals(responseCode, rs.getObject("response_code"));
         if (errorPrefix == null) {
