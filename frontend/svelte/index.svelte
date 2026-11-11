@@ -13,6 +13,8 @@ import {
   DOT_COLOR,
   PERIODS,
   TEXT_COLOR,
+  bucketEdges,
+  bucketStatus,
   formatAxis,
   formatPercent,
   formatTime,
@@ -58,18 +60,20 @@ function toBucket(json: any): Bucket {
   return {
     start: new Date(json.start),
     end: new Date(json.end),
-    checks: json.checks,
-    successfulChecks: json.successfulChecks,
-    uptime: json.uptime,
-    status: statusOf(json.uptime),
+    total: json.total,
+    successes: json.successes,
+    failures: json.failures,
+    noData: json.noData,
+    status: bucketStatus(json.successes, json.failures, json.noData),
   };
 }
 
-// Weighted by the number of checks, so a quiet bucket doesn't count as much as a busy one.
+// Checks without a result are left out, so missing data doesn't count as downtime.
 function overallUptime(buckets: Bucket[]): number | null {
-  const checks = buckets.reduce((sum, b) => sum + b.checks, 0);
-  const successful = buckets.reduce((sum, b) => sum + b.successfulChecks, 0);
-  return checks === 0 ? null : (successful * 100) / checks;
+  const successes = buckets.reduce((sum, b) => sum + b.successes, 0);
+  const failures = buckets.reduce((sum, b) => sum + b.failures, 0);
+  const checks = successes + failures;
+  return checks === 0 ? null : (successes * 100) / checks;
 }
 
 function currentStatus(buckets: Bucket[]): Status {
@@ -82,22 +86,24 @@ function currentStatus(buckets: Bucket[]): Status {
 // Placeholder buckets with no data, for a website whose uptime hasn't been loaded yet.
 function emptyBuckets(p: Period): Bucket[] {
   const { start, end } = rangeOf(p);
-  const bucketMs = (end.getTime() - start.getTime()) / BUCKET_COUNT;
-  return Array.from({ length: BUCKET_COUNT }, (_, i) => ({
-    start: new Date(start.getTime() + i * bucketMs),
-    end: new Date(start.getTime() + (i + 1) * bucketMs),
-    checks: 0,
-    successfulChecks: 0,
-    uptime: null,
-    status: 'none' as Status,
-  }));
+  const edges = bucketEdges(start, end);
+  return Array.from({ length: BUCKET_COUNT }, (_, i) => {
+    const total = Math.round((edges[i + 1].getTime() - edges[i].getTime()) / 60000);
+    return {
+      start: edges[i],
+      end: edges[i + 1],
+      total,
+      successes: 0,
+      failures: 0,
+      noData: total,
+      status: 'none' as Status,
+    };
+  });
 }
 
 function formatTip(bucket: Bucket, p: Period): string {
   const range = `${formatTime(bucket.start, p)} – ${formatTime(bucket.end, p)}`;
-  if (bucket.uptime === null) return `${range}: No data`;
-  const failed = bucket.checks - bucket.successfulChecks;
-  return `${range}: ${formatPercent(bucket.uptime)} (${failed} of ${bucket.checks} checks failed)`;
+  return `${range}: ${bucket.successes} successes, ${bucket.failures} failures, ${bucket.noData} no data, ${bucket.total} total`;
 }
 
 // --- Server calls ---
@@ -236,7 +242,7 @@ function onSiteRemoved(url: string) {
 
   <div class="flex flex-wrap gap-4 text-sm opacity-80">
     <span class="flex items-center gap-2"><span class="inline-block h-3 w-3 rounded-sm bg-success"></span>Up</span>
-    <span class="flex items-center gap-2"><span class="inline-block h-3 w-3 rounded-sm bg-warning"></span>Some failed checks</span>
+    <span class="flex items-center gap-2"><span class="inline-block h-3 w-3 rounded-sm bg-warning"></span>Partly up</span>
     <span class="flex items-center gap-2"><span class="inline-block h-3 w-3 rounded-sm bg-error"></span>Down</span>
     <span class="flex items-center gap-2"><span class="inline-block h-3 w-3 rounded-sm bg-base-300"></span>No data</span>
   </div>

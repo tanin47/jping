@@ -117,6 +117,7 @@ public class Pinger {
 
     Integer responseCode = null;
     String error = null;
+    var pingStartedAt = Instant.now();
     var requestStartedAt = System.nanoTime();
     try {
       var request = HttpRequest.newBuilder(URI.create(url))
@@ -143,7 +144,9 @@ public class Pinger {
     }
 
     try {
-      db.finishResponse(url, scheduledAt, finishedAt, responseCode, error);
+      if (!db.finishResponse(url, scheduledAt, pingStartedAt, finishedAt, responseCode, error)) {
+        logger.info("Skipped updating the response for " + url + " (scheduled at " + scheduledAt + ") because it's already finished");
+      }
     } catch (Exception e) {
       logger.log(Level.WARNING, "Could not update the response row for " + url, e);
     }

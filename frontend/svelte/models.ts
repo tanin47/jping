@@ -1,12 +1,13 @@
-// 'none' means there were no checks in the bucket, so there's no data to show.
+// 'none' means none of the checks have a result.
 export type Status = 'up' | 'degraded' | 'down' | 'none';
 
 export interface Bucket {
   start: Date;
   end: Date;
-  checks: number;
-  successfulChecks: number;
-  uptime: number | null; // 0..100, or null when there were no checks
+  total: number; // The checks that should have run, one per minute.
+  successes: number;
+  failures: number;
+  noData: number;
   status: Status;
 }
 

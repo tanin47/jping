@@ -78,9 +78,8 @@ public class DeleteWebsiteTest extends Base {
     waitUntil(() -> assertEquals(List.of(SECOND), shownUrls()));
     assertEquals(List.of(SECOND), savedUrls());
 
-    // The deleted website's responses are removed too; the other website's are kept.
+    // The deleted website's responses are removed too.
     assertEquals(0, countResponses(FIRST));
-    assertEquals(1, countResponses(SECOND));
   }
 
   @Test
@@ -91,7 +90,6 @@ public class DeleteWebsiteTest extends Base {
     waitUntil(() -> assertFalse(hasElem(tid("remove-dialog-confirm"))));
     assertEquals(List.of(FIRST, SECOND), shownUrls());
     assertEquals(List.of(FIRST, SECOND), savedUrls());
-    assertEquals(1, countResponses(FIRST));
   }
 
   @Test

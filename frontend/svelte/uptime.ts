@@ -32,6 +32,23 @@ export function statusOf(uptime: number | null): Status {
   return 'down';
 }
 
+export function bucketStatus(successes: number, failures: number, noData: number): Status {
+  const total = successes + failures + noData;
+  if (total === 0 || noData === total) return 'none';
+  if (successes === total) return 'up';
+  if (successes > 0) return 'degraded';
+  return 'down';
+}
+
+// Matches the server: every edge is at the start of a minute.
+export function bucketEdges(start: Date, end: Date): Date[] {
+  const totalMinutes = Math.round((end.getTime() - start.getTime()) / MINUTE_MS);
+  return Array.from(
+    { length: BUCKET_COUNT + 1 },
+    (_, i) => new Date(start.getTime() + Math.floor((i * totalMinutes) / BUCKET_COUNT) * MINUTE_MS),
+  );
+}
+
 export function formatPercent(value: number | null): string {
   if (value === null) return 'No data';
   return value >= 99.995 ? '100%' : `${value.toFixed(2)}%`;
