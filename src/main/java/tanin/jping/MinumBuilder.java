@@ -12,8 +12,6 @@ import java.io.UncheckedIOException;
 import java.net.URI;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.Executors;
@@ -42,7 +40,7 @@ public class MinumBuilder {
   }
 
 
-  public static final boolean IS_LOCAL_DEV = Files.exists(Path.of("local_dev_marker.jping"));
+  public static final boolean IS_LOCAL_DEV = "true".equalsIgnoreCase(System.getenv("JPING_LOCAL_DEV"));
 
   public static FullSystem build(int port) {
     if (IS_LOCAL_DEV) {
