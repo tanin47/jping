@@ -18,6 +18,15 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: jping_test
+          POSTGRES_USER: jping_test_user
+          POSTGRES_PASSWORD: test
+        ports:
+          - 5432:5432
 
     steps:
       - name: Checkout
