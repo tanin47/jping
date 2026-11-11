@@ -174,6 +174,56 @@ public class DatabaseService {
     return result;
   }
 
+  public void insertJpingUptime(Instant startedAt, Instant endedAt) throws SQLException {
+    try (
+      var conn = connect();
+      var stmt = conn.prepareStatement("INSERT INTO jping_uptime (started_at, ended_at) VALUES (?, ?)")
+    ) {
+      stmt.setTimestamp(1, Timestamp.from(startedAt));
+      stmt.setTimestamp(2, Timestamp.from(endedAt));
+      stmt.executeUpdate();
+    }
+  }
+
+  public void updateJpingUptimeEndedAt(Instant startedAt, Instant endedAt) throws SQLException {
+    try (
+      var conn = connect();
+      var stmt = conn.prepareStatement("UPDATE jping_uptime SET ended_at = ? WHERE started_at = ?")
+    ) {
+      stmt.setTimestamp(1, Timestamp.from(endedAt));
+      stmt.setTimestamp(2, Timestamp.from(startedAt));
+      stmt.executeUpdate();
+    }
+  }
+
+  /** Inserts an unfinished check. finishResponse fills in its result. */
+  public void insertResponse(String url, Instant startedAt) throws SQLException {
+    try (
+      var conn = connect();
+      var stmt = conn.prepareStatement("INSERT INTO response (url, started_at) VALUES (?, ?)")
+    ) {
+      stmt.setString(1, url);
+      stmt.setTimestamp(2, Timestamp.from(startedAt));
+      stmt.executeUpdate();
+    }
+  }
+
+  public void finishResponse(String url, Instant startedAt, Instant finishedAt, Integer responseCode, String error) throws SQLException {
+    try (
+      var conn = connect();
+      var stmt = conn.prepareStatement(
+        "UPDATE response SET finished_at = ?, response_code = ?, error = ? WHERE url = ? AND started_at = ?"
+      )
+    ) {
+      stmt.setTimestamp(1, Timestamp.from(finishedAt));
+      stmt.setObject(2, responseCode);
+      stmt.setString(3, error);
+      stmt.setString(4, url);
+      stmt.setTimestamp(5, Timestamp.from(startedAt));
+      stmt.executeUpdate();
+    }
+  }
+
   /**
    * Returns the periods when JPing was running that overlap [start, end), ordered by start time.
    * Each interval is clipped to [start, end).
