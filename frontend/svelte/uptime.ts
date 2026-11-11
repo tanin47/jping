@@ -1,14 +1,13 @@
 // Helpers shared by the website timelines and the JPing uptime bar.
 import type { Period, Status } from './models';
 
-// The server always splits a period into this many buckets.
-export const BUCKET_COUNT = 90;
-
+// Shorter periods get fewer, wider buckets, so switching periods visibly changes the timeline.
+// Every bucket covers a round duration: 1 hour, 4 hours, 12 hours, and 1 day.
 export const PERIODS: Period[] = [
-  { key: '24h', label: 'Last 24 hours', hours: 24 },
-  { key: '7d', label: 'Last 7 days', hours: 24 * 7 },
-  { key: '30d', label: 'Last 30 days', hours: 24 * 30 },
-  { key: '90d', label: 'Last 90 days', hours: 24 * 90 },
+  { key: '24h', label: 'Last 24 hours', hours: 24, buckets: 24 },
+  { key: '7d', label: 'Last 7 days', hours: 24 * 7, buckets: 42 },
+  { key: '30d', label: 'Last 30 days', hours: 24 * 30, buckets: 60 },
+  { key: '90d', label: 'Last 90 days', hours: 24 * 90, buckets: 90 },
 ];
 
 const MINUTE_MS = 60 * 1000;
@@ -23,6 +22,10 @@ export function rangeOf(p: Period): { start: Date; end: Date } {
 export function rangeParams(p: Period): string {
   const { start, end } = rangeOf(p);
   return new URLSearchParams({ start: start.toISOString(), end: end.toISOString() }).toString();
+}
+
+export function bucketParams(p: Period): string {
+  return `${rangeParams(p)}&buckets=${p.buckets}`;
 }
 
 export function statusOf(uptime: number | null): Status {
@@ -41,11 +44,11 @@ export function bucketStatus(successes: number, failures: number, noData: number
 }
 
 // Matches the server: every edge is at the start of a minute.
-export function bucketEdges(start: Date, end: Date): Date[] {
+export function bucketEdges(start: Date, end: Date, count: number): Date[] {
   const totalMinutes = Math.round((end.getTime() - start.getTime()) / MINUTE_MS);
   return Array.from(
-    { length: BUCKET_COUNT + 1 },
-    (_, i) => new Date(start.getTime() + Math.floor((i * totalMinutes) / BUCKET_COUNT) * MINUTE_MS),
+    { length: count + 1 },
+    (_, i) => new Date(start.getTime() + Math.floor((i * totalMinutes) / count) * MINUTE_MS),
   );
 }
 
