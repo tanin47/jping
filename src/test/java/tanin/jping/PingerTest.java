@@ -25,7 +25,7 @@ public class PingerTest {
     try (var conn = db.connect(); var stmt = conn.createStatement()) {
       stmt.execute("TRUNCATE website_url, response, jping_uptime");
     }
-    server = new WebServer(PORT, -1, null, null, db);
+    server = new WebServer(PORT, -1, null, null, false, db);
     server.start();
   }
 
@@ -52,7 +52,7 @@ public class PingerTest {
   @Test
   void recordsTheStatusCode() throws Exception {
     var url = "http://localhost:" + PORT + "/healthcheck";
-    db.addWebsite(url, "active");
+    db.addWebsite(url);
     var minute = Instant.now().truncatedTo(ChronoUnit.MINUTES);
 
     server.pinger.ping(url, minute);
@@ -63,7 +63,7 @@ public class PingerTest {
   @Test
   void recordsTheErrorWhenThereIsNoResponse() throws Exception {
     var url = "http://localhost:1/";
-    db.addWebsite(url, "active");
+    db.addWebsite(url);
     var minute = Instant.now().truncatedTo(ChronoUnit.MINUTES);
 
     server.pinger.ping(url, minute);

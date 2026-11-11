@@ -27,6 +27,7 @@ public class Base {
   DatabaseService db;
   Connection conn;
   boolean shouldLoggedIn = true;
+  boolean isDemo = false;
 
   @BeforeAll
   void setUpAll() throws Exception {
@@ -63,7 +64,7 @@ public class Base {
   @BeforeEach
   void setUp() throws Exception {
     // Starting the server runs the migration, so the tables exist before they're emptied below.
-    server = new WebServer(PORT, -1, null, null, db);
+    server = new WebServer(PORT, -1, null, null, isDemo, db);
     server.start();
 
     // Start each test with an empty database.

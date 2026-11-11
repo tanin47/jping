@@ -1,3 +1,7 @@
+
+// @ts-expect-error defined globally
+export const IS_DEMO = window.IS_DEMO
+
 // Sends a JSON request and returns the parsed body, or throws an Error with the server's message.
 export async function api(method: string, path: string, body?: unknown): Promise<any> {
   const response = await fetch(path, {

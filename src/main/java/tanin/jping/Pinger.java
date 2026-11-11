@@ -97,9 +97,6 @@ public class Pinger {
   void pingAll(Instant minute) {
     try {
       for (var website : db.listWebsites()) {
-        if (!WebServer.DEFAULT_STATUS.equals(website.status())) {
-          continue;
-        }
         pingExecutor.submit(() -> ping(website.url(), minute));
       }
     } catch (Exception e) {

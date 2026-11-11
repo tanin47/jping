@@ -19,7 +19,7 @@ public class DatabaseService {
   // Postgres error code for a unique/primary key violation.
   private static final String UNIQUE_VIOLATION = "23505";
 
-  public record WebsiteUrl(String url, String status) {}
+  public record WebsiteUrl(String url) {}
 
   /**
    * One slice of the uptime timeline, covering [start, end).
@@ -33,7 +33,7 @@ public class DatabaseService {
   }
 
   /** A website with its uptime timeline, split into UPTIME_BUCKET_COUNT buckets ordered from oldest to newest. */
-  public record WebsiteUrlUptime(String url, String status, List<Bucket> buckets) {}
+  public record WebsiteUrlUptime(String url, List<Bucket> buckets) {}
 
   public static final int UPTIME_BUCKET_COUNT = 90;
 
@@ -76,26 +76,25 @@ public class DatabaseService {
   public List<WebsiteUrl> listWebsites() throws SQLException {
     try (
       var conn = connect();
-      var stmt = conn.prepareStatement("SELECT url, status FROM website_url ORDER BY url");
+      var stmt = conn.prepareStatement("SELECT url FROM website_url ORDER BY url");
       var rs = stmt.executeQuery()
     ) {
       var websites = new ArrayList<WebsiteUrl>();
       while (rs.next()) {
-        websites.add(new WebsiteUrl(rs.getString("url"), rs.getString("status")));
+        websites.add(new WebsiteUrl(rs.getString("url")));
       }
       return websites;
     }
   }
 
-  public WebsiteUrl addWebsite(String url, String status) throws SQLException, DuplicateWebsiteException {
+  public WebsiteUrl addWebsite(String url) throws SQLException, DuplicateWebsiteException {
     try (
       var conn = connect();
-      var stmt = conn.prepareStatement("INSERT INTO website_url (url, status) VALUES (?, ?)")
+      var stmt = conn.prepareStatement("INSERT INTO website_url (url) VALUES (?)")
     ) {
       stmt.setString(1, url);
-      stmt.setString(2, status);
       stmt.executeUpdate();
-      return new WebsiteUrl(url, status);
+      return new WebsiteUrl(url);
     } catch (SQLException e) {
       if (UNIQUE_VIOLATION.equals(e.getSQLState())) {
         throw new DuplicateWebsiteException(url);
@@ -169,7 +168,7 @@ public class DatabaseService {
       for (int i = 0; i < UPTIME_BUCKET_COUNT; i++) {
         buckets.add(new Bucket(edges[i], edges[i + 1], counts[i][0], counts[i][1]));
       }
-      result.add(new WebsiteUrlUptime(website.url(), website.status(), buckets));
+      result.add(new WebsiteUrlUptime(website.url(), buckets));
     }
     return result;
   }

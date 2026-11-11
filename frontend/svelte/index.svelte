@@ -117,7 +117,6 @@ async function loadSites(p: Period) {
     websitesPullOk = true;
     sites = (json.websites as any[]).map((w) => ({
       url: w.url,
-      status: w.status,
       buckets: (w.buckets as any[]).map(toBucket),
     }));
   } catch (e) {

@@ -1,5 +1,5 @@
 <script lang="ts">
-import { api } from './globals';
+import { IS_DEMO, api } from './globals';
 import type { WebsiteUrl } from './models';
 
 interface Props {
@@ -65,7 +65,13 @@ async function submit(event: SubmitEvent) {
       aria-label="Website URL"
       data-test-id="new-url-input"
     />
-    <button type="submit" class="btn btn-primary join-item" disabled={adding} data-test-id="add-website-button">
+    <button
+      type="submit"
+      class="btn btn-primary join-item"
+      disabled={adding || IS_DEMO}
+      title={IS_DEMO ? 'You cannot add a URL because this is a demo mode.' : undefined}
+      data-test-id="add-website-button"
+    >
       {#if adding}<span class="loading loading-spinner loading-sm"></span>{/if}
       Add URL
     </button>

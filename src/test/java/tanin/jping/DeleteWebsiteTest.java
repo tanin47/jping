@@ -16,8 +16,8 @@ public class DeleteWebsiteTest extends Base {
 
   @BeforeEach
   void addWebsites() throws Exception {
-    db.addWebsite(FIRST, "active");
-    db.addWebsite(SECOND, "active");
+    db.addWebsite(FIRST);
+    db.addWebsite(SECOND);
     addResponse(FIRST);
     addResponse(SECOND);
   }

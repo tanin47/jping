@@ -12,7 +12,6 @@ export interface Bucket {
 
 export interface WebsiteUrl {
   url: string;
-  status: string;
 }
 
 export interface Site extends WebsiteUrl {
