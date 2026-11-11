@@ -11,6 +11,8 @@ needs is a Postgres database.
 
 You can run it as a standalone server (using the JAR file or the docker image) or embed it into your larger Java system.
 
+Demo: https://jping.summerarea.com/
+
 Features
 ---------
 

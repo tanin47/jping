@@ -207,8 +207,10 @@ function onSiteRemoved(url: string) {
 
 <div class="container mx-auto max-w-4xl p-4 sm:p-8 flex flex-col gap-6">
   <header class="flex flex-wrap items-center gap-4">
-    <img src="/assets/images/logo.png" alt="" class="h-[32px]" />
-    <h1 class="text-2xl font-bold flex-1">JPing</h1>
+    <div class="flex flex-1 items-center gap-0">
+      <img src="/assets/images/logo.png" alt="" class="h-[32px]" />
+      <h1 class="text-2xl font-bold">JPing</h1>
+    </div>
     <span
       class="flex items-center gap-2 text-xs"
       title={pullOk ? `Refreshes every ${PULL_INTERVAL_MS / 1000} seconds` : pullError}
