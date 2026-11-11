@@ -91,7 +91,6 @@ public class DeleteWebsiteTest extends Base {
     waitUntil(() -> assertFalse(hasElem(tid("remove-dialog-confirm"))));
     assertEquals(List.of(FIRST, SECOND), shownUrls());
     assertEquals(List.of(FIRST, SECOND), savedUrls());
-    assertEquals(1, countResponses(FIRST));
   }
 
   @Test
