@@ -109,9 +109,10 @@ public class Pinger {
     }
   }
 
-  void ping(String url, Instant startedAt) {
+  void ping(String url, Instant scheduledAt) {
+    var startedAt = Instant.now();
     try {
-      db.insertResponse(url, startedAt);
+      db.insertResponse(url, scheduledAt, startedAt);
     } catch (Exception e) {
       logger.log(Level.WARNING, "Could not insert the response row for " + url, e);
       return;
@@ -139,13 +140,13 @@ public class Pinger {
     var finishedAt = Instant.now();
     var durationMillis = (System.nanoTime() - requestStartedAt) / 1_000_000;
     if (error == null) {
-      logger.info("Pinged " + url + " (started at " + startedAt + "): status " + responseCode + " in " + durationMillis + "ms");
+      logger.info("Pinged " + url + " (scheduled at " + scheduledAt + "): status " + responseCode + " in " + durationMillis + "ms");
     } else {
-      logger.warning("Pinging " + url + " (started at " + startedAt + ") failed after " + durationMillis + "ms: " + error);
+      logger.warning("Pinging " + url + " (scheduled at " + scheduledAt + ") failed after " + durationMillis + "ms: " + error);
     }
 
     try {
-      db.finishResponse(url, startedAt, finishedAt, responseCode, error);
+      db.finishResponse(url, scheduledAt, finishedAt, responseCode, error);
     } catch (Exception e) {
       logger.log(Level.WARNING, "Could not update the response row for " + url, e);
     }

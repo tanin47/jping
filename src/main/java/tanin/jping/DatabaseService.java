@@ -136,11 +136,11 @@ public class DatabaseService {
       var stmt = conn.prepareStatement("""
         SELECT
           url,
-          width_bucket(started_at, ?::timestamptz[]) AS bucket,
+          width_bucket(scheduled_at, ?::timestamptz[]) AS bucket,
           count(*) AS checks,
           count(*) FILTER (WHERE response_code BETWEEN 200 AND 499) AS successful_checks
         FROM response
-        WHERE started_at >= ? AND started_at < ? AND finished_at IS NOT NULL
+        WHERE scheduled_at >= ? AND scheduled_at < ? AND finished_at IS NOT NULL
         GROUP BY url, bucket
         """)
     ) {
@@ -197,29 +197,30 @@ public class DatabaseService {
   }
 
   /** Inserts an unfinished check. finishResponse fills in its result. */
-  public void insertResponse(String url, Instant startedAt) throws SQLException {
+  public void insertResponse(String url, Instant scheduledAt, Instant startedAt) throws SQLException {
     try (
       var conn = connect();
-      var stmt = conn.prepareStatement("INSERT INTO response (url, started_at) VALUES (?, ?)")
+      var stmt = conn.prepareStatement("INSERT INTO response (url, scheduled_at, started_at) VALUES (?, ?, ?)")
     ) {
       stmt.setString(1, url);
-      stmt.setTimestamp(2, Timestamp.from(startedAt));
+      stmt.setTimestamp(2, Timestamp.from(scheduledAt));
+      stmt.setTimestamp(3, Timestamp.from(startedAt));
       stmt.executeUpdate();
     }
   }
 
-  public void finishResponse(String url, Instant startedAt, Instant finishedAt, Integer responseCode, String error) throws SQLException {
+  public void finishResponse(String url, Instant scheduledAt, Instant finishedAt, Integer responseCode, String error) throws SQLException {
     try (
       var conn = connect();
       var stmt = conn.prepareStatement(
-        "UPDATE response SET finished_at = ?, response_code = ?, error = ? WHERE url = ? AND started_at = ?"
+        "UPDATE response SET finished_at = ?, response_code = ?, error = ? WHERE url = ? AND scheduled_at = ?"
       )
     ) {
       stmt.setTimestamp(1, Timestamp.from(finishedAt));
       stmt.setObject(2, responseCode);
       stmt.setString(3, error);
       stmt.setString(4, url);
-      stmt.setTimestamp(5, Timestamp.from(startedAt));
+      stmt.setTimestamp(5, Timestamp.from(scheduledAt));
       stmt.executeUpdate();
     }
   }
