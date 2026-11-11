@@ -9,17 +9,16 @@ import { IS_ADMIN, api } from './globals';
 import type { Bucket, Period, Site, Status, WebsiteUrl } from './models';
 import {
   BAR_COLOR,
-  BUCKET_COUNT,
   DOT_COLOR,
   PERIODS,
   TEXT_COLOR,
   bucketEdges,
+  bucketParams,
   bucketStatus,
   formatAxis,
   formatPercent,
   formatTime,
   rangeOf,
-  rangeParams,
   statusOf,
 } from './uptime';
 
@@ -86,8 +85,8 @@ function currentStatus(buckets: Bucket[]): Status {
 // Placeholder buckets with no data, for a website whose uptime hasn't been loaded yet.
 function emptyBuckets(p: Period): Bucket[] {
   const { start, end } = rangeOf(p);
-  const edges = bucketEdges(start, end);
-  return Array.from({ length: BUCKET_COUNT }, (_, i) => {
+  const edges = bucketEdges(start, end, p.buckets);
+  return Array.from({ length: p.buckets }, (_, i) => {
     const total = Math.round((edges[i + 1].getTime() - edges[i].getTime()) / 60000);
     return {
       start: edges[i],
@@ -117,7 +116,7 @@ async function loadSites(p: Period) {
   loading = lastPulledAt === null;
   loadError = '';
   try {
-    const json = await api('GET', `/api/websites/uptime?${rangeParams(p)}`);
+    const json = await api('GET', `/api/websites/uptime?${bucketParams(p)}`);
     if (request !== latestRequest) return;
     lastPulledAt = new Date();
     websitesPullOk = true;

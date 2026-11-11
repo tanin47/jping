@@ -23,6 +23,7 @@ export interface Period {
   key: string;
   label: string;
   hours: number;
+  buckets: number;
 }
 
 // A period when JPing itself was running.

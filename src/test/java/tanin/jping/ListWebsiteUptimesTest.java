@@ -59,12 +59,26 @@ public class ListWebsiteUptimesTest {
   void bucketsCoverTheRangeWithoutGaps() throws Exception {
     var buckets = db.listWebsiteUptimes(START, END).getFirst().buckets();
 
-    assertEquals(DatabaseService.UPTIME_BUCKET_COUNT, buckets.size());
+    assertEquals(DatabaseService.DEFAULT_UPTIME_BUCKET_COUNT, buckets.size());
     assertEquals(START, buckets.getFirst().start());
     assertEquals(END, buckets.getLast().end());
     for (int i = 1; i < buckets.size(); i++) {
       assertEquals(buckets.get(i - 1).end(), buckets.get(i).start());
     }
+  }
+
+  @Test
+  void splitsTheRangeIntoTheRequestedNumberOfBuckets() throws Exception {
+    var end = START.plus(Duration.ofHours(24));
+    addCheck(START.plus(Duration.ofMinutes(61)), 500, true);
+
+    var buckets = db.listWebsiteUptimes(START, end, 24).getFirst().buckets();
+    assertEquals(24, buckets.size());
+    for (int i = 0; i < buckets.size(); i++) {
+      assertEquals(START.plus(Duration.ofHours(i)), buckets.get(i).start());
+      assertEquals(60, buckets.get(i).total());
+    }
+    assertBucket(buckets.get(1), 60, 0, 1, 59);
   }
 
   @Test

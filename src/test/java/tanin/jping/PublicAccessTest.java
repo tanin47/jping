@@ -64,6 +64,15 @@ public class PublicAccessTest extends Base {
   }
 
   @Test
+  void uptimeRejectsAnInvalidBucketCount() throws Exception {
+    var range = "/api/websites/uptime?start=2026-11-10T00:00:00Z&end=2026-11-11T00:00:00Z";
+    assertEquals(200, request("GET", range + "&buckets=24", null, false).statusCode());
+    assertEquals(400, request("GET", range + "&buckets=0", null, false).statusCode());
+    assertEquals(400, request("GET", range + "&buckets=501", null, false).statusCode());
+    assertEquals(400, request("GET", range + "&buckets=abc", null, false).statusCode());
+  }
+
+  @Test
   void adminRequiresCredentials() throws Exception {
     assertEquals(401, request("GET", "/admin", null, false).statusCode());
     assertEquals(200, request("GET", "/admin", null, true).statusCode());

@@ -174,15 +174,22 @@ public class WebServer {
       return json(StatusLine.StatusCode.CODE_200_OK, new JsonObject().add("websites", websites));
     });
 
-    // GET /api/websites/uptime?start=<ISO-8601 instant>&end=<ISO-8601 instant>
+    // GET /api/websites/uptime?start=<ISO-8601 instant>&end=<ISO-8601 instant>&buckets=<count, optional>
     wf.registerPath(GET, "api/websites/uptime", req -> {
       var range = readTimeRange(req);
       if (range.error() != null) {
         return error(StatusLine.StatusCode.CODE_400_BAD_REQUEST, range.error());
       }
+      var bucketCount = readBucketCount(req);
+      if (bucketCount == null) {
+        return error(
+          StatusLine.StatusCode.CODE_400_BAD_REQUEST,
+          "buckets must be an integer between 1 and " + DatabaseService.MAX_UPTIME_BUCKET_COUNT + "."
+        );
+      }
 
       var websites = new JsonArray();
-      for (var website : db.listWebsiteUptimes(range.start(), range.end())) {
+      for (var website : db.listWebsiteUptimes(range.start(), range.end(), bucketCount)) {
         websites.add(toJson(website));
       }
       return json(
@@ -314,6 +321,20 @@ public class WebServer {
       return new TimeRange(null, null, "start must be before end.");
     }
     return new TimeRange(start, end, null);
+  }
+
+  /** The buckets query param, or the default when it's missing. Returns null when it's invalid. */
+  static Integer readBucketCount(IRequest req) {
+    var raw = req.getRequestLine().queryString().get("buckets");
+    if (raw == null || raw.isEmpty()) {
+      return DatabaseService.DEFAULT_UPTIME_BUCKET_COUNT;
+    }
+    try {
+      var count = Integer.parseInt(raw);
+      return count >= 1 && count <= DatabaseService.MAX_UPTIME_BUCKET_COUNT ? count : null;
+    } catch (NumberFormatException e) {
+      return null;
+    }
   }
 
   /** Parses a URL-encoded ISO-8601 instant from the query string. Returns null when it's missing or invalid. */

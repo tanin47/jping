@@ -33,10 +33,11 @@ public class DatabaseService {
     }
   }
 
-  /** A website with its uptime timeline, split into UPTIME_BUCKET_COUNT buckets ordered from oldest to newest. */
+  /** A website with its uptime timeline, split into buckets ordered from oldest to newest. */
   public record WebsiteUrlUptime(String url, List<Bucket> buckets) {}
 
-  public static final int UPTIME_BUCKET_COUNT = 90;
+  public static final int DEFAULT_UPTIME_BUCKET_COUNT = 90;
+  public static final int MAX_UPTIME_BUCKET_COUNT = 500;
 
   /** A period when JPing itself was running, covering [startedAt, endedAt). */
   public record UpInterval(Instant startedAt, Instant endedAt) {}
@@ -116,11 +117,15 @@ public class DatabaseService {
   }
 
   /**
-   * Returns every website with its uptime between start and end, split into UPTIME_BUCKET_COUNT buckets.
+   * Returns every website with its uptime between start and end, split into bucketCount buckets.
    * start is rounded down and end is rounded up to the minute, and every bucket edge is at the start of a minute.
-   * When the range has fewer minutes than UPTIME_BUCKET_COUNT, some buckets are empty.
+   * When the range has fewer minutes than bucketCount, some buckets are empty.
    */
   public List<WebsiteUrlUptime> listWebsiteUptimes(Instant start, Instant end) throws SQLException {
+    return listWebsiteUptimes(start, end, DEFAULT_UPTIME_BUCKET_COUNT);
+  }
+
+  public List<WebsiteUrlUptime> listWebsiteUptimes(Instant start, Instant end, int bucketCount) throws SQLException {
     var alignedStart = start.truncatedTo(ChronoUnit.MINUTES);
     var alignedEnd = end.truncatedTo(ChronoUnit.MINUTES);
     if (alignedEnd.isBefore(end)) {
@@ -128,9 +133,9 @@ public class DatabaseService {
     }
     var totalMinutes = Duration.between(alignedStart, alignedEnd).toMinutes();
 
-    var edges = new Instant[UPTIME_BUCKET_COUNT + 1];
-    for (int i = 0; i <= UPTIME_BUCKET_COUNT; i++) {
-      edges[i] = alignedStart.plus(Duration.ofMinutes(i * totalMinutes / UPTIME_BUCKET_COUNT));
+    var edges = new Instant[bucketCount + 1];
+    for (int i = 0; i <= bucketCount; i++) {
+      edges[i] = alignedStart.plus(Duration.ofMinutes(i * totalMinutes / bucketCount));
     }
 
     var countsByUrl = new HashMap<String, int[][]>();
@@ -151,8 +156,8 @@ public class DatabaseService {
         GROUP BY url, bucket
         """)
     ) {
-      var bucketStarts = new Timestamp[UPTIME_BUCKET_COUNT];
-      for (int i = 0; i < UPTIME_BUCKET_COUNT; i++) {
+      var bucketStarts = new Timestamp[bucketCount];
+      for (int i = 0; i < bucketCount; i++) {
         bucketStarts[i] = Timestamp.from(edges[i]);
       }
       stmt.setArray(1, conn.createArrayOf("timestamptz", bucketStarts));
@@ -161,7 +166,7 @@ public class DatabaseService {
 
       try (var rs = stmt.executeQuery()) {
         while (rs.next()) {
-          var counts = countsByUrl.computeIfAbsent(rs.getString("url"), k -> new int[UPTIME_BUCKET_COUNT][2]);
+          var counts = countsByUrl.computeIfAbsent(rs.getString("url"), k -> new int[bucketCount][2]);
           var index = rs.getInt("bucket") - 1;
           counts[index][0] = rs.getInt("successes");
           counts[index][1] = rs.getInt("failures");
@@ -171,9 +176,9 @@ public class DatabaseService {
 
     var result = new ArrayList<WebsiteUrlUptime>();
     for (var website : listWebsites()) {
-      var counts = countsByUrl.getOrDefault(website.url(), new int[UPTIME_BUCKET_COUNT][2]);
-      var buckets = new ArrayList<Bucket>(UPTIME_BUCKET_COUNT);
-      for (int i = 0; i < UPTIME_BUCKET_COUNT; i++) {
+      var counts = countsByUrl.getOrDefault(website.url(), new int[bucketCount][2]);
+      var buckets = new ArrayList<Bucket>(bucketCount);
+      for (int i = 0; i < bucketCount; i++) {
         var total = (int) Duration.between(edges[i], edges[i + 1]).toMinutes();
         buckets.add(new Bucket(edges[i], edges[i + 1], total, counts[i][0], counts[i][1]));
       }
