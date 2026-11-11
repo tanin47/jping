@@ -30,7 +30,7 @@ public class ListWebsiteUptimesTest {
     try (var conn = db.connect(); var stmt = conn.createStatement()) {
       stmt.execute("TRUNCATE website_url, response, jping_uptime");
     }
-    db.addWebsite(URL, "active");
+    db.addWebsite(URL);
   }
 
   void addCheck(Instant scheduledAt, Integer responseCode, boolean finished) throws Exception {

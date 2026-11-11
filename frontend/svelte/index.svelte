@@ -21,6 +21,13 @@ import {
   statusOf,
 } from './uptime';
 
+interface Props {
+  // Adding and deleting URLs are disabled in the demo mode.
+  isDemo: boolean;
+}
+
+let { isDemo }: Props = $props();
+
 let periodKey = $state('7d');
 let period = $derived(PERIODS.find((p) => p.key === periodKey)!);
 
@@ -117,7 +124,6 @@ async function loadSites(p: Period) {
     websitesPullOk = true;
     sites = (json.websites as any[]).map((w) => ({
       url: w.url,
-      status: w.status,
       buckets: (w.buckets as any[]).map(toBucket),
     }));
   } catch (e) {
@@ -229,7 +235,7 @@ function onSiteRemoved(url: string) {
     </select>
   </header>
 
-  <AddSiteForm existingUrls={sites.map((s) => s.url)} onAdded={onSiteAdded} />
+  <AddSiteForm {isDemo} existingUrls={sites.map((s) => s.url)} onAdded={onSiteAdded} />
 
   <div class="flex flex-wrap gap-4 text-sm opacity-80">
     <span class="flex items-center gap-2"><span class="inline-block h-3 w-3 rounded-sm bg-success"></span>Up</span>
@@ -264,7 +270,7 @@ function onSiteRemoved(url: string) {
   </p>
 </div>
 
-<RemoveSiteDialog bind:this={removeDialog} onRemoved={onSiteRemoved} />
+<RemoveSiteDialog bind:this={removeDialog} {isDemo} onRemoved={onSiteRemoved} />
 
 <style>
   /* A ring that keeps expanding from the green dot while pulls are succeeding. */

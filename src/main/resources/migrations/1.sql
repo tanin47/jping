@@ -1,8 +1,7 @@
 # --- !Ups
 
 CREATE TABLE website_url (
-  url TEXT PRIMARY KEY,
-  status TEXT NOT NULL
+  url TEXT PRIMARY KEY
 );
 
 CREATE TABLE response (

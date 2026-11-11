@@ -3,13 +3,14 @@ import { api } from './globals';
 import type { WebsiteUrl } from './models';
 
 interface Props {
+  isDemo: boolean;
   // Used to catch duplicates before calling the server.
   existingUrls: string[];
   // Called after the website has been saved on the server.
   onAdded: (website: WebsiteUrl) => void;
 }
 
-let { existingUrls, onAdded }: Props = $props();
+let { isDemo, existingUrls, onAdded }: Props = $props();
 
 let newUrl = $state('');
 let error = $state('');
@@ -65,7 +66,13 @@ async function submit(event: SubmitEvent) {
       aria-label="Website URL"
       data-test-id="new-url-input"
     />
-    <button type="submit" class="btn btn-primary join-item" disabled={adding} data-test-id="add-website-button">
+    <button
+      type="submit"
+      class="btn btn-primary join-item"
+      disabled={adding || isDemo}
+      title={isDemo ? 'You cannot add a URL because this is a demo mode.' : undefined}
+      data-test-id="add-website-button"
+    >
       {#if adding}<span class="loading loading-spinner loading-sm"></span>{/if}
       Add URL
     </button>

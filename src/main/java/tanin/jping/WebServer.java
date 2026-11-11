@@ -48,15 +48,24 @@ public class WebServer {
   final String username;
   final String password;
   final boolean authEnabled;
+  final boolean isDemo;
   final DatabaseService db;
   final Pinger pinger;
 
   WebServer(int port, int sslPort, DatabaseService db) {
-    this(port, sslPort, System.getenv("JPING_USERNAME"), System.getenv("JPING_PASSWORD"), db);
+    this(
+      port,
+      sslPort,
+      System.getenv("JPING_USERNAME"),
+      System.getenv("JPING_PASSWORD"),
+      "true".equalsIgnoreCase(System.getenv("JPING_DEMO")),
+      db
+    );
   }
 
-  WebServer(int port, int sslPort, String username, String password, DatabaseService db) {
+  WebServer(int port, int sslPort, String username, String password, boolean isDemo, DatabaseService db) {
     this.port = port;
+    this.isDemo = isDemo;
     this.sslPort = sslPort;
     this.db = db;
     this.pinger = new Pinger(db);
@@ -68,6 +77,10 @@ public class WebServer {
       logger.info("HTTP Basic Authentication is enabled.");
     } else {
       logger.warning("HTTP Basic Authentication is disabled. Set JPING_USERNAME and JPING_PASSWORD to enable it.");
+    }
+
+    if (isDemo) {
+      logger.info("Running in the demo mode. Adding and deleting URLs are disabled.");
     }
   }
 
@@ -135,7 +148,7 @@ public class WebServer {
         logger.info("Serve /");
         try (var stream = WebServer.class.getResourceAsStream("/html/index.html")) {
           assert stream != null;
-          String content = new String(stream.readAllBytes());
+          String content = new String(stream.readAllBytes()).replace("{{IS_DEMO}}", String.valueOf(isDemo));
           return Response.htmlOk(content);
         }
       }
@@ -202,6 +215,10 @@ public class WebServer {
     });
 
     wf.registerPath(POST, "api/websites", req -> {
+      if (isDemo) {
+        return error(StatusLine.StatusCode.CODE_403_FORBIDDEN, "You cannot add a URL because this is a demo mode.");
+      }
+
       var url = readUrl(req);
       var urlError = validateUrl(url);
       if (urlError != null) {
@@ -209,7 +226,7 @@ public class WebServer {
       }
 
       try {
-        var website = db.addWebsite(url, DEFAULT_STATUS);
+        var website = db.addWebsite(url);
         logger.info("Added website: " + url);
         return json(StatusLine.StatusCode.CODE_201_CREATED, new JsonObject().add("website", toJson(website)));
       } catch (DatabaseService.DuplicateWebsiteException e) {
@@ -218,6 +235,10 @@ public class WebServer {
     });
 
     wf.registerPath(DELETE, "api/websites", req -> {
+      if (isDemo) {
+        return error(StatusLine.StatusCode.CODE_403_FORBIDDEN, "You cannot delete a URL because this is a demo mode.");
+      }
+
       var url = readUrl(req);
       if (url == null || url.isEmpty()) {
         return error(StatusLine.StatusCode.CODE_400_BAD_REQUEST, "The URL is required.");
@@ -233,7 +254,6 @@ public class WebServer {
     pinger.start();
   }
 
-  static final String DEFAULT_STATUS = "active";
   static final int MAX_URL_LENGTH = 2048;
 
   /** Reads the "url" field from a JSON body. Returns null if the body isn't a JSON object with a string "url". */
@@ -312,12 +332,11 @@ public class WebServer {
     }
     return new JsonObject()
       .add("url", website.url())
-      .add("status", website.status())
       .add("buckets", buckets);
   }
 
   static JsonObject toJson(DatabaseService.WebsiteUrl website) {
-    return new JsonObject().add("url", website.url()).add("status", website.status());
+    return new JsonObject().add("url", website.url());
   }
 
   static IResponse json(StatusLine.StatusCode code, JsonValue body) {
