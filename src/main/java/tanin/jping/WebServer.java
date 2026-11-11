@@ -49,6 +49,7 @@ public class WebServer {
   final String password;
   final boolean authEnabled;
   final DatabaseService db;
+  final Pinger pinger;
 
   WebServer(int port, int sslPort, DatabaseService db) {
     this(port, sslPort, System.getenv("JPING_USERNAME"), System.getenv("JPING_PASSWORD"), db);
@@ -58,6 +59,7 @@ public class WebServer {
     this.port = port;
     this.sslPort = sslPort;
     this.db = db;
+    this.pinger = new Pinger(db);
     this.username = username;
     this.password = password;
     this.authEnabled = username != null && !username.isEmpty() && password != null && !password.isEmpty();
@@ -227,6 +229,8 @@ public class WebServer {
       logger.info("Deleted website: " + url);
       return json(StatusLine.StatusCode.CODE_200_OK, new JsonObject().add("url", url));
     });
+
+    pinger.start();
   }
 
   static final String DEFAULT_STATUS = "active";
@@ -329,6 +333,7 @@ public class WebServer {
   }
 
   public void stop() {
+    pinger.stop();
     if (minum != null) {
       MinumBuilder.shutdownQuietly(minum);
     }
