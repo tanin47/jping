@@ -1,5 +1,5 @@
 <script lang="ts">
-import { IS_DEMO, api } from './globals';
+import { api } from './globals';
 
 interface Props {
   // Called after the website has been deleted on the server.
@@ -45,14 +45,10 @@ function reset() {
 <dialog class="modal" bind:this={dialog} onclose={reset}>
   <div class="modal-box">
     <h3 class="text-lg font-bold">Remove website?</h3>
-    {#if IS_DEMO}
-      <p class="py-4" data-test-id="remove-dialog-demo">You cannot delete a URL because this is a demo mode.</p>
-    {:else}
-      <p class="py-4">
-        JPing will stop monitoring <span class="font-semibold break-all" data-test-id="remove-dialog-url">{url}</span>
-        and its uptime history will be deleted.
-      </p>
-    {/if}
+    <p class="py-4">
+      JPing will stop monitoring <span class="font-semibold break-all" data-test-id="remove-dialog-url">{url}</span>
+      and its uptime history will be deleted.
+    </p>
     {#if error}
       <p class="text-error text-sm">{error}</p>
     {/if}
@@ -60,7 +56,7 @@ function reset() {
       <form method="dialog">
         <button class="btn" disabled={removing} data-test-id="remove-dialog-cancel">Cancel</button>
       </form>
-      <button class="btn btn-error" onclick={confirmRemove} disabled={removing || IS_DEMO} data-test-id="remove-dialog-confirm">
+      <button class="btn btn-error" onclick={confirmRemove} disabled={removing} data-test-id="remove-dialog-confirm">
         {#if removing}<span class="loading loading-spinner loading-sm"></span>{/if}
         Remove
       </button>

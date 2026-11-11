@@ -1,6 +1,7 @@
 
+// Whether the add URL form and the delete buttons are shown. The server sets it in index.html.
 // @ts-expect-error defined globally
-export const IS_DEMO = window.IS_DEMO
+export const IS_ADMIN: boolean = window.IS_ADMIN
 
 // Sends a JSON request and returns the parsed body, or throws an Error with the server's message.
 export async function api(method: string, path: string, body?: unknown): Promise<any> {

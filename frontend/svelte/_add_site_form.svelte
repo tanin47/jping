@@ -1,5 +1,5 @@
 <script lang="ts">
-import { IS_DEMO, api } from './globals';
+import { api } from './globals';
 import type { WebsiteUrl } from './models';
 
 interface Props {
@@ -68,8 +68,7 @@ async function submit(event: SubmitEvent) {
     <button
       type="submit"
       class="btn btn-primary join-item"
-      disabled={adding || IS_DEMO}
-      title={IS_DEMO ? 'You cannot add a URL because this is a demo mode.' : undefined}
+      disabled={adding}
       data-test-id="add-website-button"
     >
       {#if adding}<span class="loading loading-spinner loading-sm"></span>{/if}

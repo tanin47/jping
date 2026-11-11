@@ -5,19 +5,30 @@ public class Main {
   static final int DEFAULT_SSL_PORT = 8443;
 
   public static void main(String[] args) throws Exception {
-    var databaseUrl = System.getenv("JPING_DATABASE_URL");
-    if (databaseUrl == null || databaseUrl.isEmpty()) {
-      System.err.println("JPING_DATABASE_URL is required, e.g. postgres://user:password@localhost:5432/jping");
-      System.exit(1);
-    }
+    var databaseUrl = readRequiredEnv("JPING_DATABASE_URL", "e.g. postgres://user:password@localhost:5432/jping");
+    var username = readRequiredEnv("JPING_USERNAME", "It's the username for HTTP Basic Authentication.");
+    var password = readRequiredEnv("JPING_PASSWORD", "It's the password for HTTP Basic Authentication.");
 
     var server = new WebServer(
       readPortFromEnv("JPING_PORT", DEFAULT_PORT),
       readPortFromEnv("JPING_SSL_PORT", DEFAULT_SSL_PORT),
+      username,
+      password,
+      "true".equalsIgnoreCase(System.getenv("JPING_PUBLIC_ACCESS")),
       databaseUrl
     );
     server.start();
     server.block();
+  }
+
+  /** Returns the value of the env variable. Exits when it isn't set or is empty. */
+  static String readRequiredEnv(String name, String hint) {
+    var value = System.getenv(name);
+    if (value == null || value.isEmpty()) {
+      System.err.println(name + " is required. " + hint);
+      System.exit(1);
+    }
+    return value;
   }
 
   /** Returns the port in the env variable, or the default when it isn't set. Exits on an invalid value. */

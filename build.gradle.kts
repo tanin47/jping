@@ -86,6 +86,8 @@ application {
 tasks.named<JavaExec>("run") {
     environment("JPING_LOCAL_DEV", "true")
     environment("JPING_DATABASE_URL", "postgres://jping_dev_user:dev@localhost:5432/jping_dev")
+    environment("JPING_USERNAME", "admin")
+    environment("JPING_PASSWORD", "dev")
 }
 
 publishing {

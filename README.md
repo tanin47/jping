@@ -19,9 +19,9 @@ Features
 * Shows an uptime timeline for each URL over the last 24 hours, 7 days, 30 days, or 90 days.
 * Tracks JPing's own uptime, so you can tell a down website apart from a time when JPing itself wasn't running.
 * Refreshes the page automatically every 30 seconds.
-* Optional HTTP Basic Authentication.
-* A demo mode that disables adding and deleting URLs.
-* A `/healthcheck` endpoint for load balancers. It stays open even when authentication is on.
+* Protected by HTTP Basic Authentication.
+* An optional public access, which lets anyone view the uptimes while only `/admin` can add and delete URLs.
+* A `/healthcheck` endpoint for load balancers. It never requires the credentials.
 
 
 Configuration
@@ -34,10 +34,21 @@ JPing is configured with the env variables below:
 | `JPING_DATABASE_URL`                | Yes      |         | The Postgres database, e.g. `postgres://user:password@localhost:5432/jping`. A `jdbc:postgresql://` URL works too. |
 | `JPING_PORT`                        | No       | `9090`  | The HTTP port.                                                                             |
 | `JPING_SSL_PORT`                    | No       | `8443`  | The HTTPS port. The web framework always starts an HTTPS server, so this port must be free. |
-| `JPING_USERNAME` / `JPING_PASSWORD` | No       |         | HTTP Basic Authentication is turned on when both are set.                                  |
-| `JPING_DEMO`                        | No       |         | Set to `true` to disable adding and deleting URLs.                                         |
+| `JPING_USERNAME` / `JPING_PASSWORD` | Yes      |         | The credentials for HTTP Basic Authentication. Neither can be empty.                       |
+| `JPING_PUBLIC_ACCESS`               | No       |         | Set to `true` to let anyone view the uptimes. See [Public access](#public-access).          |
 
 JPing creates its tables on startup, so the database only needs to exist.
+
+### Public access
+
+By default, every page and API requires the credentials, and `/` shows the controls for adding and deleting URLs.
+
+With `JPING_PUBLIC_ACCESS=true`:
+
+* Anyone can open `/` and view the uptimes. The form for adding a URL and the delete buttons are hidden.
+* `/admin` asks for the credentials and shows the same page with the add form and the delete buttons.
+  The home page doesn't link to `/admin`, so you have to type it in.
+* Adding and deleting URLs always require the credentials.
 
 
 How to run
@@ -57,7 +68,10 @@ First, download the `jping-VERSION.jar` file from the [Releases](https://github.
 Then, run the command below with Java 21 or newer:
 
 ```
-JPING_DATABASE_URL=postgres://user:password@localhost:5432/jping java -jar jping-1.0.0.jar
+JPING_DATABASE_URL=postgres://user:password@localhost:5432/jping \
+JPING_USERNAME=admin \
+JPING_PASSWORD=change-me \
+java -jar jping-1.0.0.jar
 ```
 
 Then, visit http://localhost:9090
@@ -69,6 +83,8 @@ The docker image is here: https://hub.docker.com/repository/docker/tanin47/jping
 ```
 docker run -p 9090:9090 \
            -e JPING_DATABASE_URL=postgres://user:password@host.docker.internal:5432/jping \
+           -e JPING_USERNAME=admin \
+           -e JPING_PASSWORD=change-me \
            --pull always \
            tanin47/jping:v1.0.0
 ```
@@ -82,7 +98,7 @@ To keep secrets out of your shell history, put the env variables in a file and u
 __<ins>Use Render.com</ins>__
 
 The file [render.yaml](./render.yaml) shows a blueprint example of how to run JPing on Render. Render asks for
-`JPING_DATABASE_URL`, `JPING_USERNAME`, `JPING_PASSWORD`, and `JPING_DEMO` when you create the service from the blueprint.
+`JPING_DATABASE_URL`, `JPING_USERNAME`, `JPING_PASSWORD`, and `JPING_PUBLIC_ACCESS` when you create the service from the blueprint.
 
 ### 2. Embed JPing into a larger system
 
@@ -106,13 +122,16 @@ import tanin.jping.WebServer;
 var server = new WebServer(
   9090, // The HTTP port
   8443, // The HTTPS port
+  "admin", // The username for HTTP Basic Authentication
+  "change-me", // The password for HTTP Basic Authentication
+  false, // Whether the public access is enabled. See "Public access" above.
   "postgres://user:password@localhost:5432/jping"
 );
 server.start();
 ```
 
-This constructor reads `JPING_USERNAME`, `JPING_PASSWORD`, and `JPING_DEMO` from the env variables. To set them in code,
-use `new WebServer(httpPort, httpsPort, username, password, isDemo, databaseUrl)`.
+`WebServer` doesn't read any env variables, so the larger system passes everything in. It throws when the username or
+password is empty.
 
 3. Visit http://localhost:9090 to confirm that the embedded JPing is working.
 
@@ -163,6 +182,7 @@ How to develop
 3. On a separate terminal, run `npm run hmr`. It serves the frontend code and hot-reloads its changes.
 4. Run `./gradlew run` to run the web server at http://localhost:9090.
    * It sets `JPING_LOCAL_DEV=true`, which turns on the dev mode, and uses the `jping_dev` database.
+   * The username is `admin` and the password is `dev`.
    * Hot-reloading is only supported on the frontend code.
 
 To fill the dev database with fake data, add a few URLs first, then run:
@@ -208,7 +228,7 @@ This flow has been set up as a part of the Github Actions workflow: `create-rele
 1. Run `./gradlew clean publish` to build the fat JAR, which the Dockerfile copies into the image.
 2. Run `docker buildx build --platform linux/amd64,linux/arm64 -t jping:v1.0.0 .`
 3. Test locally with:
-   `docker run -p 9090:9090 -e JPING_DATABASE_URL=postgres://user:password@host.docker.internal:5432/jping jping:v1.0.0`
+   `docker run -p 9090:9090 -e JPING_DATABASE_URL=postgres://user:password@host.docker.internal:5432/jping -e JPING_USERNAME=admin -e JPING_PASSWORD=change-me jping:v1.0.0`
 4. Run: `docker tag jping:v1.0.0 tanin47/jping:v1.0.0`
 5. Run: `docker push tanin47/jping:v1.0.0`
 6. Go to Render.com, sync the blueprint, and test that it works
@@ -219,6 +239,6 @@ Release a new version
 1. Create an empty release with a new tag. The tag must follow the format: `vX.Y.Z`.
 2. Go to Actions and wait for the `create-release-and-docker` (which is triggered automatically) workflow to finish.
 3. Test the docker with
-   `docker run -p 9090:9090 -e JPING_DATABASE_URL=postgres://user:password@host.docker.internal:5432/jping tanin47/jping:vX.Y.Z`.
+   `docker run -p 9090:9090 -e JPING_DATABASE_URL=postgres://user:password@host.docker.internal:5432/jping -e JPING_USERNAME=admin -e JPING_PASSWORD=change-me tanin47/jping:vX.Y.Z`.
 4. Go to Actions and trigger the workflow `publish-jar` on the tag `vX.Y.Z` in order to publish the JAR to Central
    Sonatype.
