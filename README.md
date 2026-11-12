@@ -27,6 +27,15 @@ Features
 * An optional public access, which lets anyone view the uptimes while only `/admin` can add and delete URLs.
 * A `/healthcheck` endpoint for load balancers. It never requires the credentials.
 
+Motivation
+-----------
+
+I run multiple VPSes for various side projects. One of my servers hosts all of my unpopular/low-traffic apps, and whenever one of them actually takes off, I migrate it over to its own dedicated VPS.
+
+With VPS, it requires more attention on uptime/reliability compared to using Vercel, Render, Heroku, and other PaaSes. I need a way to keep track my VPS's uptime and reliability.
+
+So, I built JPing, which is a website monitoring system that pings your URLs every minute and presents everything on a clean, beautiful dashboard. Because I can just spin it up right on my main server alongside my other small apps, it doesn't cost me an extra dime in hosting fees.
+
 
 Configuration
 --------------
