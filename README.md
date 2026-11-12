@@ -73,7 +73,7 @@ Then, run the command below with Java 21 or newer:
 JPING_DATABASE_URL=postgres://user:password@localhost:5432/jping \
 JPING_USERNAME=admin \
 JPING_PASSWORD=change-me \
-java -jar jping-1.2.0.jar
+java -jar jping-1.3.0.jar
 ```
 
 Then, visit http://localhost:9090
@@ -88,7 +88,7 @@ docker run -p 9090:9090 \
            -e JPING_USERNAME=admin \
            -e JPING_PASSWORD=change-me \
            --pull always \
-           tanin47/jping:v1.2.0
+           tanin47/jping:v1.3.0
 ```
 
 Inside the container, `localhost` is the container itself. Use `host.docker.internal` to reach a Postgres database
@@ -110,7 +110,7 @@ The file [render.yaml](./render.yaml) shows a blueprint example of how to run JP
 <dependency>
     <groupId>io.github.tanin47</groupId>
     <artifactId>jping</artifactId>
-    <version>1.2.0</version>
+    <version>1.3.0</version>
 </dependency>
 ```
 
@@ -228,11 +228,11 @@ Publish Docker
 This flow has been set up as a part of the Github Actions workflow: `create-release-and-docker`.
 
 1. Run `./gradlew clean publish` to build the fat JAR, which the Dockerfile copies into the image.
-2. Run `docker buildx build --platform linux/amd64,linux/arm64 -t jping:v1.2.0 .`
+2. Run `docker buildx build --platform linux/amd64,linux/arm64 -t jping:v1.3.0 .`
 3. Test locally with:
-   `docker run -p 9090:9090 -e JPING_DATABASE_URL=postgres://user:password@host.docker.internal:5432/jping -e JPING_USERNAME=admin -e JPING_PASSWORD=change-me jping:v1.2.0`
-4. Run: `docker tag jping:v1.2.0 tanin47/jping:v1.2.0`
-5. Run: `docker push tanin47/jping:v1.2.0`
+   `docker run -p 9090:9090 -e JPING_DATABASE_URL=postgres://user:password@host.docker.internal:5432/jping -e JPING_USERNAME=admin -e JPING_PASSWORD=change-me jping:v1.3.0`
+4. Run: `docker tag jping:v1.3.0 tanin47/jping:v1.3.0`
+5. Run: `docker push tanin47/jping:v1.3.0`
 6. Go to Render.com, sync the blueprint, and test that it works
 
 Release a new version

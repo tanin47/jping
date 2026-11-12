@@ -8,6 +8,8 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -36,7 +38,7 @@ public class DatabaseService {
   /** A website with its uptime timeline, split into buckets ordered from oldest to newest. */
   public record WebsiteUrlUptime(String url, List<Bucket> buckets) {}
 
-  public static final int DEFAULT_UPTIME_BUCKET_COUNT = 90;
+  public static final int DEFAULT_BUCKET_MINUTES = 60;
   public static final int MAX_UPTIME_BUCKET_COUNT = 500;
 
   /** A period when JPing itself was running, covering [startedAt, endedAt). */
@@ -117,33 +119,68 @@ public class DatabaseService {
   }
 
   /**
-   * Returns every website with its uptime between start and end, split into bucketCount buckets.
-   * start is rounded down and end is rounded up to the minute, and every bucket edge is at the start of a minute.
-   * When the range has fewer minutes than bucketCount, some buckets are empty.
+   * Splits [start, end) into buckets that are bucketMinutes long on the wall clock of zone. Bucket edges are at
+   * the start of the day plus a multiple of bucketMinutes, so buckets of an hour or longer start on the hour.
+   * Only the first and the last bucket can be shorter: start is rounded down and end is rounded up to the minute,
+   * and either may fall between two edges. bucketMinutes must divide a day (1440 minutes).
+   * Throws IllegalArgumentException when there would be more than MAX_UPTIME_BUCKET_COUNT buckets.
    */
-  public List<WebsiteUrlUptime> listWebsiteUptimes(Instant start, Instant end) throws SQLException {
-    return listWebsiteUptimes(start, end, DEFAULT_UPTIME_BUCKET_COUNT);
-  }
-
-  public List<WebsiteUrlUptime> listWebsiteUptimes(Instant start, Instant end, int bucketCount) throws SQLException {
+  public static List<Instant> bucketEdges(Instant start, Instant end, int bucketMinutes, ZoneId zone) {
     var alignedStart = start.truncatedTo(ChronoUnit.MINUTES);
     var alignedEnd = end.truncatedTo(ChronoUnit.MINUTES);
     if (alignedEnd.isBefore(end)) {
       alignedEnd = alignedEnd.plus(Duration.ofMinutes(1));
     }
-    var totalMinutes = Duration.between(alignedStart, alignedEnd).toMinutes();
 
-    var edges = new Instant[bucketCount + 1];
-    for (int i = 0; i <= bucketCount; i++) {
-      edges[i] = alignedStart.plus(Duration.ofMinutes(i * totalMinutes / bucketCount));
+    var edges = new ArrayList<Instant>();
+    edges.add(alignedStart);
+    var edge = nextBucketEdge(alignedStart, bucketMinutes, zone);
+    while (edge.isBefore(alignedEnd)) {
+      if (edges.size() >= MAX_UPTIME_BUCKET_COUNT) {
+        throw new IllegalArgumentException("The range has more than " + MAX_UPTIME_BUCKET_COUNT + " buckets.");
+      }
+      edges.add(edge);
+      edge = nextBucketEdge(edge, bucketMinutes, zone);
     }
+    edges.add(alignedEnd);
+    return edges;
+  }
+
+  // The first edge after t. On a daylight saving change, the wall clock jumps, so an edge can come from the
+  // transition itself (e.g. the repeated 1:00 when the clock falls back) instead of the next wall-clock multiple.
+  static Instant nextBucketEdge(Instant t, int bucketMinutes, ZoneId zone) {
+    var zoned = t.atZone(zone);
+    var nextMinuteOfDay = (minuteOfDay(zoned) / bucketMinutes + 1) * bucketMinutes;
+    var local = zoned.toLocalDate().atStartOfDay().plusMinutes(nextMinuteOfDay);
+    var candidate = ZonedDateTime.ofLocal(local, zone, zoned.getOffset()).toInstant();
+
+    var transition = zone.getRules().nextTransition(t);
+    if (transition != null && transition.getInstant().isBefore(candidate)) {
+      var at = transition.getInstant();
+      var atZoned = at.atZone(zone);
+      if (atZoned.getSecond() == 0 && minuteOfDay(atZoned) % bucketMinutes == 0) {
+        return at;
+      }
+      return nextBucketEdge(at, bucketMinutes, zone);
+    }
+    return candidate;
+  }
+
+  static int minuteOfDay(ZonedDateTime zoned) {
+    return zoned.getHour() * 60 + zoned.getMinute();
+  }
+
+  /** Returns every website with its uptime split into the buckets between consecutive edges, which must be ascending. */
+  public List<WebsiteUrlUptime> listWebsiteUptimes(List<Instant> edges) throws SQLException {
+    var bucketCount = edges.size() - 1;
+    var alignedStart = edges.getFirst();
+    var alignedEnd = edges.getLast();
 
     var countsByUrl = new HashMap<String, int[][]>();
     try (
       var conn = connect();
       // width_bucket(value, thresholds) returns i when thresholds[i] <= value < thresholds[i + 1] (1-based),
-      // so each bucket includes its start and excludes its end. Empty buckets share their start with the next
-      // bucket, and width_bucket picks the last of equal thresholds, so nothing is counted in an empty bucket.
+      // so each bucket includes its start and excludes its end.
       // Checks that haven't finished yet are left out, so they count as no data.
       var stmt = conn.prepareStatement("""
         SELECT
@@ -158,7 +195,7 @@ public class DatabaseService {
     ) {
       var bucketStarts = new Timestamp[bucketCount];
       for (int i = 0; i < bucketCount; i++) {
-        bucketStarts[i] = Timestamp.from(edges[i]);
+        bucketStarts[i] = Timestamp.from(edges.get(i));
       }
       stmt.setArray(1, conn.createArrayOf("timestamptz", bucketStarts));
       stmt.setTimestamp(2, Timestamp.from(alignedStart));
@@ -179,8 +216,8 @@ public class DatabaseService {
       var counts = countsByUrl.getOrDefault(website.url(), new int[bucketCount][2]);
       var buckets = new ArrayList<Bucket>(bucketCount);
       for (int i = 0; i < bucketCount; i++) {
-        var total = (int) Duration.between(edges[i], edges[i + 1]).toMinutes();
-        buckets.add(new Bucket(edges[i], edges[i + 1], total, counts[i][0], counts[i][1]));
+        var total = (int) Duration.between(edges.get(i), edges.get(i + 1)).toMinutes();
+        buckets.add(new Bucket(edges.get(i), edges.get(i + 1), total, counts[i][0], counts[i][1]));
       }
       result.add(new WebsiteUrlUptime(website.url(), buckets));
     }

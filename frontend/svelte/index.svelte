@@ -6,24 +6,26 @@ import JpingUptimeBar from './_jping_uptime_bar.svelte';
 import PendingBar from './_pending_bar.svelte';
 import RemoveSiteDialog from './_remove_site_dialog.svelte';
 import { IS_ADMIN, api } from './globals';
-import type { Bucket, Period, Site, Status, WebsiteUrl } from './models';
+import type { Bucket, Period, Site, Status, TimeZoneMode, WebsiteUrl } from './models';
 import {
   BAR_COLOR,
   DOT_COLOR,
   PERIODS,
   TEXT_COLOR,
-  bucketEdges,
+  TIME_ZONES,
+  bucketEdgesOf,
   bucketParams,
   bucketStatus,
   formatAxis,
+  formatDateTime,
   formatPercent,
   formatTime,
-  rangeOf,
   statusOf,
 } from './uptime';
 
-let periodKey = $state('7d');
+let periodKey = $state('24h');
 let period = $derived(PERIODS.find((p) => p.key === periodKey)!);
+let timeZone: TimeZoneMode = $state('local');
 
 let sites: Site[] = $state([]);
 let loading = $state(true);
@@ -83,10 +85,9 @@ function currentStatus(buckets: Bucket[]): Status {
 }
 
 // Placeholder buckets with no data, for a website whose uptime hasn't been loaded yet.
-function emptyBuckets(p: Period): Bucket[] {
-  const { start, end } = rangeOf(p);
-  const edges = bucketEdges(start, end, p.buckets);
-  return Array.from({ length: p.buckets }, (_, i) => {
+function emptyBuckets(p: Period, tz: TimeZoneMode): Bucket[] {
+  const edges = bucketEdgesOf(p, tz);
+  return Array.from({ length: edges.length - 1 }, (_, i) => {
     const total = Math.round((edges[i + 1].getTime() - edges[i].getTime()) / 60000);
     return {
       start: edges[i],
@@ -100,23 +101,23 @@ function emptyBuckets(p: Period): Bucket[] {
   });
 }
 
-function formatTip(bucket: Bucket, p: Period): string {
-  const range = `${formatTime(bucket.start, p)} – ${formatTime(bucket.end, p)}`;
+function formatTip(bucket: Bucket, p: Period, tz: TimeZoneMode): string {
+  const range = `${formatTime(bucket.start, p, tz)} – ${formatTime(bucket.end, p, tz)}`;
   return `${range}: ${bucket.successes} successes, ${bucket.failures} failures, ${bucket.noData} no data, ${bucket.total} total`;
 }
 
 // --- Server calls ---
 
-// Counts requests so a slow response for an old period can't overwrite a newer one.
+// Counts requests so a slow response for an old period or time zone can't overwrite a newer one.
 let latestRequest = 0;
 
-async function loadSites(p: Period) {
+async function loadSites(p: Period, tz: TimeZoneMode) {
   const request = ++latestRequest;
   // Show the spinner only on the first load, not on every refresh.
   loading = lastPulledAt === null;
   loadError = '';
   try {
-    const json = await api('GET', `/api/websites/uptime?${bucketParams(p)}`);
+    const json = await api('GET', `/api/websites/uptime?${bucketParams(p, tz)}`);
     if (request !== latestRequest) return;
     lastPulledAt = new Date();
     websitesPullOk = true;
@@ -134,19 +135,20 @@ async function loadSites(p: Period) {
   }
 }
 
-// Loads on mount, whenever the period changes, and on every auto refresh.
+// Loads on mount, whenever the period or the time zone changes, and on every auto refresh.
 $effect(() => {
   const p = period;
+  const tz = timeZone;
   pullTick;
-  // Only the period should trigger a reload, not the state that loadSites reads.
-  untrack(() => loadSites(p));
+  // Only the period and the time zone should trigger a reload, not the state that loadSites reads.
+  untrack(() => loadSites(p, tz));
 });
 
 // --- Add website ---
 
 function onSiteAdded(website: WebsiteUrl) {
-  sites.push({ ...website, buckets: emptyBuckets(period) });
-  loadSites(period);
+  sites.push({ ...website, buckets: emptyBuckets(period, timeZone) });
+  loadSites(period, timeZone);
 }
 
 // --- Delete confirmation ---
@@ -186,9 +188,11 @@ function onSiteRemoved(url: string) {
 
       <div class="flex h-8 gap-px">
         {#each buckets as bucket}
+          <!-- Sized by duration, so the latest (partial) bucket is narrower and the timeline lines up with JPing's bar. -->
           <div
-            class="tooltip flex-1 min-w-0"
-            data-tip={formatTip(bucket, period)}
+            class="tooltip min-w-0"
+            style="flex: {bucket.end.getTime() - bucket.start.getTime()} 1 0px;"
+            data-tip={formatTip(bucket, period, timeZone)}
           >
             <div class="h-full w-full rounded-sm {BAR_COLOR[bucket.status]} hover:opacity-70"></div>
           </div>
@@ -197,7 +201,7 @@ function onSiteRemoved(url: string) {
       </div>
 
       <div class="flex justify-between text-xs opacity-60">
-        <span>{formatAxis(buckets[0].start, period)}</span>
+        <span>{formatAxis(buckets[0].start, period, timeZone)}</span>
         <span>Now</span>
       </div>
     </div>
@@ -226,10 +230,15 @@ function onSiteRemoved(url: string) {
         {#if !pullOk}Update failed.{/if}
         {#if lastPulledAt}
           {pullOk ? 'Updated' : 'Last updated'}
-          {lastPulledAt.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+          {formatDateTime(lastPulledAt, timeZone)}
         {/if}
       </span>
     </span>
+    <select class="select select-sm w-auto" bind:value={timeZone} aria-label="Time zone" data-test-id="time-zone">
+      {#each TIME_ZONES as tz}
+        <option value={tz.key}>{tz.label}</option>
+      {/each}
+    </select>
     <select class="select select-sm w-auto" bind:value={periodKey} aria-label="Period">
       {#each PERIODS as p}
         <option value={p.key}>{p.label}</option>
@@ -249,7 +258,7 @@ function onSiteRemoved(url: string) {
   </div>
 
   <section class="flex flex-col gap-3">
-    <JpingUptimeBar {period} refreshKey={pullTick} onPulled={onJpingPulled} />
+    <JpingUptimeBar {period} {timeZone} refreshKey={pullTick} onPulled={onJpingPulled} />
 
     <h2 class="text-sm font-semibold uppercase tracking-wide opacity-60 mt-2">URLs ({sites.length})</h2>
     {#if loading}
@@ -257,7 +266,7 @@ function onSiteRemoved(url: string) {
     {:else if loadError && !lastPulledAt}
       <div role="alert" class="alert alert-error">
         <span>Couldn't load the URLs: {loadError}</span>
-        <button class="btn btn-sm" onclick={() => loadSites(period)}>Retry</button>
+        <button class="btn btn-sm" onclick={() => loadSites(period, timeZone)}>Retry</button>
       </div>
     {:else}
       {#each sites as site (site.url)}

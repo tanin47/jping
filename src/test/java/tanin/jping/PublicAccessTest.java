@@ -64,12 +64,23 @@ public class PublicAccessTest extends Base {
   }
 
   @Test
-  void uptimeRejectsAnInvalidBucketCount() throws Exception {
+  void uptimeRejectsAnInvalidBucketSize() throws Exception {
     var range = "/api/websites/uptime?start=2026-11-10T00:00:00Z&end=2026-11-11T00:00:00Z";
-    assertEquals(200, request("GET", range + "&buckets=24", null, false).statusCode());
-    assertEquals(400, request("GET", range + "&buckets=0", null, false).statusCode());
-    assertEquals(400, request("GET", range + "&buckets=501", null, false).statusCode());
-    assertEquals(400, request("GET", range + "&buckets=abc", null, false).statusCode());
+    assertEquals(200, request("GET", range + "&bucketMinutes=15", null, false).statusCode());
+    assertEquals(400, request("GET", range + "&bucketMinutes=0", null, false).statusCode());
+    assertEquals(400, request("GET", range + "&bucketMinutes=7", null, false).statusCode());
+    assertEquals(400, request("GET", range + "&bucketMinutes=2880", null, false).statusCode());
+    assertEquals(400, request("GET", range + "&bucketMinutes=abc", null, false).statusCode());
+    // 1440 one-minute buckets are more than the maximum.
+    assertEquals(400, request("GET", range + "&bucketMinutes=1", null, false).statusCode());
+  }
+
+  @Test
+  void uptimeRejectsAnInvalidTimeZone() throws Exception {
+    var range = "/api/websites/uptime?start=2026-11-10T00:00:00Z&end=2026-11-11T00:00:00Z";
+    assertEquals(200, request("GET", range + "&timezone=UTC", null, false).statusCode());
+    assertEquals(200, request("GET", range + "&timezone=Asia%2FKolkata", null, false).statusCode());
+    assertEquals(400, request("GET", range + "&timezone=Mars%2FOlympus", null, false).statusCode());
   }
 
   @Test

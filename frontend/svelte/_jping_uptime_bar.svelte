@@ -3,7 +3,7 @@
 import { untrack } from 'svelte';
 import { api } from './globals';
 import PendingBar from './_pending_bar.svelte';
-import type { Period, UpInterval } from './models';
+import type { Period, TimeZoneMode, UpInterval } from './models';
 import {
   BAR_COLOR,
   DOT_COLOR,
@@ -19,13 +19,14 @@ import {
 
 interface Props {
   period: Period;
+  timeZone: TimeZoneMode;
   // The bar reloads whenever this changes.
   refreshKey: number;
   // Called after each load with whether it succeeded.
   onPulled?: (ok: boolean, error: string) => void;
 }
 
-let { period, refreshKey, onPulled }: Props = $props();
+let { period, timeZone, refreshKey, onPulled }: Props = $props();
 
 type SegmentKind = 'up' | 'down' | 'none';
 
@@ -35,7 +36,7 @@ interface Segment {
   end: Date;
 }
 
-let range = $state(rangeOf(period));
+let range = $state(rangeOf(period, timeZone));
 let intervals: UpInterval[] = $state([]);
 let loading = $state(true);
 let loadError = $state('');
@@ -44,11 +45,11 @@ let loaded = $state(false);
 // Counts requests so a slow response for an old period can't overwrite a newer one.
 let latestRequest = 0;
 
-async function load(p: Period) {
+async function load(p: Period, tz: TimeZoneMode) {
   const request = ++latestRequest;
   loadError = '';
   try {
-    const json = await api('GET', `/api/jping/uptime?${rangeParams(p)}`);
+    const json = await api('GET', `/api/jping/uptime?${rangeParams(p, tz)}`);
     if (request !== latestRequest) return;
     range = { start: new Date(json.start), end: new Date(json.end) };
     intervals = (json.intervals as any[]).map((i) => ({
@@ -66,11 +67,12 @@ async function load(p: Period) {
   }
 }
 
-// Loads on mount, whenever the period changes, and on every refresh.
+// Loads on mount, whenever the period or the time zone changes, and on every refresh.
 $effect(() => {
   const p = period;
+  const tz = timeZone;
   refreshKey;
-  untrack(() => load(p));
+  untrack(() => load(p, tz));
 });
 
 // Splits the range into up and down segments. Gaps between intervals are downtime,
@@ -107,11 +109,8 @@ const current = 'up';
 
 const LABEL: Record<SegmentKind, string> = { up: 'Up', down: 'Down', none: 'No data' };
 
-// Keeps short sections, like a one-minute restart, visible and hoverable.
-const MIN_SECTION_PX = 5;
-
 function tipOf(segment: Segment): string {
-  const span = `${formatTime(segment.start, period)} – ${formatTime(segment.end, period)}`;
+  const span = `${formatTime(segment.start, period, timeZone)} – ${formatTime(segment.end, period, timeZone)}`;
   if (segment.kind === 'none') return `${span}: No data`;
   return `${span}: ${LABEL[segment.kind]} for ${formatDuration(segment.end.getTime() - segment.start.getTime())}`;
 }
@@ -133,21 +132,28 @@ function tipOf(segment: Segment): string {
     {#if loadError && !loaded}
       <div role="alert" class="alert alert-error">
         <span>Couldn't load JPing's uptime: {loadError}</span>
-        <button class="btn btn-sm" onclick={() => load(period)}>Retry</button>
+        <button class="btn btn-sm" onclick={() => load(period, timeZone)}>Retry</button>
       </div>
     {:else if loading}
       <div class="h-8 rounded-sm bg-base-300 animate-pulse"></div>
     {:else}
-      <!-- Flex sizes each section by its duration while keeping every section at least MIN_SECTION_PX wide. -->
       <div class="flex h-8 gap-px">
         <div class="flex flex-1 min-w-0 rounded-sm bg-base-300">
           {#each segments as segment}
-            <div
-              class="tooltip h-full"
-              style="flex: {segment.end.getTime() - segment.start.getTime()} 1 0px; min-width: {MIN_SECTION_PX}px;"
-              data-tip={tipOf(segment)}
-            >
-              <div class="h-full w-full {BAR_COLOR[segment.kind]} hover:opacity-70"></div>
+            <div class="relative h-full" style="flex: {segment.end.getTime() - segment.start.getTime()} 1 0px;">
+              <div class="tooltip block h-full w-full" data-tip={tipOf(segment)}>
+                <div class="h-full w-full {BAR_COLOR[segment.kind]} hover:opacity-70"></div>
+              </div>
+              {#if segment.kind === 'down'}
+                <!-- A sibling of the bar's tooltip so hovering the caret doesn't open both tooltips. -->
+                <div
+                  class="tooltip absolute bottom-full left-1/2 -translate-x-1/2 px-1 pb-0.5 cursor-default hover:opacity-70"
+                  data-tip={tipOf(segment)}
+                  data-test-id="jping-uptime-down-caret"
+                >
+                  <div class="h-0 w-0 border-x-[5px] border-t-[6px] border-x-transparent border-t-error"></div>
+                </div>
+              {/if}
             </div>
           {/each}
         </div>
@@ -156,7 +162,7 @@ function tipOf(segment: Segment): string {
     {/if}
 
     <div class="flex justify-between text-xs opacity-60">
-      <span>{formatAxis(range.start, period)}</span>
+      <span>{formatAxis(range.start, period, timeZone)}</span>
       <span>Now</span>
     </div>
   </div>

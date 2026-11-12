@@ -17,7 +17,10 @@ import java.net.URISyntaxException;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.time.DateTimeException;
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeParseException;
 import java.util.Base64;
 import java.util.List;
@@ -174,22 +177,34 @@ public class WebServer {
       return json(StatusLine.StatusCode.CODE_200_OK, new JsonObject().add("websites", websites));
     });
 
-    // GET /api/websites/uptime?start=<ISO-8601 instant>&end=<ISO-8601 instant>&buckets=<count, optional>
+    // GET /api/websites/uptime?start=<ISO-8601 instant>&end=<ISO-8601 instant>
+    //   &bucketMinutes=<minutes that divide a day, optional>&timezone=<IANA time zone, optional>
     wf.registerPath(GET, "api/websites/uptime", req -> {
       var range = readTimeRange(req);
       if (range.error() != null) {
         return error(StatusLine.StatusCode.CODE_400_BAD_REQUEST, range.error());
       }
-      var bucketCount = readBucketCount(req);
-      if (bucketCount == null) {
+      var bucketMinutes = readBucketMinutes(req);
+      if (bucketMinutes == null) {
         return error(
           StatusLine.StatusCode.CODE_400_BAD_REQUEST,
-          "buckets must be an integer between 1 and " + DatabaseService.MAX_UPTIME_BUCKET_COUNT + "."
+          "bucketMinutes must be a positive integer that divides 1440 (the minutes in a day)."
         );
+      }
+      var zone = readTimeZone(req);
+      if (zone == null) {
+        return error(StatusLine.StatusCode.CODE_400_BAD_REQUEST, "timezone must be an IANA time zone (e.g. America/New_York).");
+      }
+
+      List<Instant> edges;
+      try {
+        edges = DatabaseService.bucketEdges(range.start(), range.end(), bucketMinutes, zone);
+      } catch (IllegalArgumentException e) {
+        return error(StatusLine.StatusCode.CODE_400_BAD_REQUEST, e.getMessage());
       }
 
       var websites = new JsonArray();
-      for (var website : db.listWebsiteUptimes(range.start(), range.end(), bucketCount)) {
+      for (var website : db.listWebsiteUptimes(edges)) {
         websites.add(toJson(website));
       }
       return json(
@@ -323,16 +338,30 @@ public class WebServer {
     return new TimeRange(start, end, null);
   }
 
-  /** The buckets query param, or the default when it's missing. Returns null when it's invalid. */
-  static Integer readBucketCount(IRequest req) {
-    var raw = req.getRequestLine().queryString().get("buckets");
+  /** The bucketMinutes query param, or the default when it's missing. Returns null when it's invalid. */
+  static Integer readBucketMinutes(IRequest req) {
+    var raw = req.getRequestLine().queryString().get("bucketMinutes");
     if (raw == null || raw.isEmpty()) {
-      return DatabaseService.DEFAULT_UPTIME_BUCKET_COUNT;
+      return DatabaseService.DEFAULT_BUCKET_MINUTES;
     }
     try {
-      var count = Integer.parseInt(raw);
-      return count >= 1 && count <= DatabaseService.MAX_UPTIME_BUCKET_COUNT ? count : null;
+      var minutes = Integer.parseInt(raw);
+      return minutes >= 1 && minutes <= 1440 && 1440 % minutes == 0 ? minutes : null;
     } catch (NumberFormatException e) {
+      return null;
+    }
+  }
+
+  /** The timezone query param, or UTC when it's missing. Returns null when it's invalid. */
+  static ZoneId readTimeZone(IRequest req) {
+    var raw = req.getRequestLine().queryString().get("timezone");
+    if (raw == null || raw.isEmpty()) {
+      return ZoneOffset.UTC;
+    }
+    try {
+      // Minum doesn't decode query string values.
+      return ZoneId.of(URLDecoder.decode(raw, StandardCharsets.UTF_8));
+    } catch (DateTimeException | IllegalArgumentException e) {
       return null;
     }
   }

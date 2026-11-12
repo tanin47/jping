@@ -8,6 +8,8 @@ import org.junit.jupiter.api.TestInstance;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -49,17 +51,17 @@ public class ListWebsiteUptimesTest {
     }
   }
 
-  DatabaseService.Bucket bucket(int index) throws Exception {
-    var websites = db.listWebsiteUptimes(START, END);
+  List<DatabaseService.Bucket> buckets(Instant start, Instant end, int bucketMinutes) throws Exception {
+    var websites = db.listWebsiteUptimes(DatabaseService.bucketEdges(start, end, bucketMinutes, ZoneOffset.UTC));
     assertEquals(1, websites.size());
-    return websites.getFirst().buckets().get(index);
+    return websites.getFirst().buckets();
   }
 
   @Test
   void bucketsCoverTheRangeWithoutGaps() throws Exception {
-    var buckets = db.listWebsiteUptimes(START, END).getFirst().buckets();
+    var buckets = buckets(START, END, 1);
 
-    assertEquals(DatabaseService.DEFAULT_UPTIME_BUCKET_COUNT, buckets.size());
+    assertEquals(90, buckets.size());
     assertEquals(START, buckets.getFirst().start());
     assertEquals(END, buckets.getLast().end());
     for (int i = 1; i < buckets.size(); i++) {
@@ -68,11 +70,11 @@ public class ListWebsiteUptimesTest {
   }
 
   @Test
-  void splitsTheRangeIntoTheRequestedNumberOfBuckets() throws Exception {
+  void splitsTheRangeIntoBucketsOfTheRequestedSize() throws Exception {
     var end = START.plus(Duration.ofHours(24));
     addCheck(START.plus(Duration.ofMinutes(61)), 500, true);
 
-    var buckets = db.listWebsiteUptimes(START, end, 24).getFirst().buckets();
+    var buckets = buckets(START, end, 60);
     assertEquals(24, buckets.size());
     for (int i = 0; i < buckets.size(); i++) {
       assertEquals(START.plus(Duration.ofHours(i)), buckets.get(i).start());
@@ -82,22 +84,20 @@ public class ListWebsiteUptimesTest {
   }
 
   @Test
-  void bucketEdgesAreAlignedToMinutes() throws Exception {
-    // 7 days don't split evenly into 90 buckets, so the bucket sizes differ by one minute.
-    var start = START.plusSeconds(30);
+  void onlyTheLatestBucketIsPartial() throws Exception {
     var end = START.plus(Duration.ofDays(7)).plusSeconds(10);
-    var buckets = db.listWebsiteUptimes(start, end).getFirst().buckets();
+    addCheck(START.plus(Duration.ofDays(7)), 200, true);
 
+    var buckets = buckets(START.plusSeconds(30), end, 240);
+    assertEquals(43, buckets.size());
     assertEquals(START, buckets.getFirst().start());
-    assertEquals(START.plus(Duration.ofDays(7)).plus(Duration.ofMinutes(1)), buckets.getLast().end());
-    var totalMinutes = 0;
-    for (var bucket : buckets) {
-      assertEquals(0, bucket.start().getEpochSecond() % 60);
-      assertEquals(0, bucket.end().getEpochSecond() % 60);
-      assertEquals(Duration.between(bucket.start(), bucket.end()).toMinutes(), bucket.total());
-      totalMinutes += bucket.total();
+    for (int i = 0; i < 42; i++) {
+      assertEquals(240, buckets.get(i).total());
     }
-    assertEquals(7 * 24 * 60 + 1, totalMinutes);
+    var last = buckets.getLast();
+    assertEquals(START.plus(Duration.ofDays(7)), last.start());
+    assertEquals(START.plus(Duration.ofDays(7)).plus(Duration.ofMinutes(1)), last.end());
+    assertBucket(last, 1, 1, 0, 0);
   }
 
   @Test
@@ -107,8 +107,9 @@ public class ListWebsiteUptimesTest {
     addCheck(START.plusSeconds(59), 200, true);
     addCheck(START.plusSeconds(60), 200, true);
 
-    assertEquals(2, bucket(0).successes());
-    assertEquals(1, bucket(1).successes());
+    var buckets = buckets(START, END, 1);
+    assertEquals(2, buckets.get(0).successes());
+    assertEquals(1, buckets.get(1).successes());
   }
 
   @Test
@@ -116,20 +117,19 @@ public class ListWebsiteUptimesTest {
     addCheck(START.minusMillis(1), 200, true);
     addCheck(END, 200, true);
 
-    var buckets = db.listWebsiteUptimes(START, END).getFirst().buckets();
+    var buckets = buckets(START, END, 15);
     assertEquals(0, buckets.stream().mapToInt(b -> b.successes() + b.failures()).sum());
   }
 
   @Test
   void countsSuccessesFailuresAndNoData() throws Exception {
-    // 180 minutes into 90 buckets, so each bucket is 2 minutes.
     var end = START.plus(Duration.ofMinutes(180));
     addCheck(START, 200, true);
     addCheck(START.plusSeconds(60), 500, true);
     addCheck(START.plusSeconds(120), 404, true);
     addCheck(START.plusSeconds(240), null, true);
 
-    var buckets = db.listWebsiteUptimes(START, end).getFirst().buckets();
+    var buckets = buckets(START, end, 2);
     assertBucket(buckets.get(0), 2, 1, 1, 0);
     assertBucket(buckets.get(1), 2, 1, 0, 1);
     assertBucket(buckets.get(2), 2, 0, 1, 1);
@@ -140,20 +140,7 @@ public class ListWebsiteUptimesTest {
   void unfinishedChecksCountAsNoData() throws Exception {
     addCheck(START, null, false);
 
-    assertBucket(bucket(0), 1, 0, 0, 1);
-  }
-
-  @Test
-  void shortRangesLeaveSomeBucketsEmpty() throws Exception {
-    var end = START.plus(Duration.ofMinutes(45));
-    addCheck(START.plusSeconds(44 * 60), 200, true);
-
-    var buckets = db.listWebsiteUptimes(START, end).getFirst().buckets();
-    assertEquals(45, buckets.stream().mapToInt(DatabaseService.Bucket::total).sum());
-    assertEquals(1, buckets.stream().mapToInt(DatabaseService.Bucket::successes).sum());
-    var last = buckets.getLast();
-    assertEquals(START.plusSeconds(44 * 60), last.start());
-    assertBucket(last, 1, 1, 0, 0);
+    assertBucket(buckets(START, END, 1).getFirst(), 1, 0, 0, 1);
   }
 
   @Test
