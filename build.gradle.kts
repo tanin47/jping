@@ -12,7 +12,7 @@ plugins {
 }
 
 group = "tanin.jping"
-version = "1.3.0"
+version = "1.4.0"
 
 description = "A minimal & robust website monitoring written in Java. Open-sourced, self-hosted, and small."
 
