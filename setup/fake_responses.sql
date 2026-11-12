@@ -14,9 +14,10 @@ SELECT url, hour, floor(5 + random() * 55)::int AS outage_minutes
 FROM website_url, generate_series(date_trunc('hour', now() - interval '90 days'), now(), interval '1 hour') AS hour
 WHERE random() < 0.004;
 
-INSERT INTO response (url, started_at, finished_at, response_code, error)
+INSERT INTO response (url, scheduled_at, started_at, finished_at, response_code, error)
 SELECT
   url,
+  started_at,
   started_at,
   CASE WHEN outcome = 'timeout' THEN started_at + interval '10 seconds' ELSE started_at + latency END,
   CASE outcome WHEN 'ok' THEN 200 WHEN 'server_error' THEN 503 END,

@@ -13,6 +13,8 @@ You can run it as a standalone server (using the JAR file or the docker image) o
 
 Demo: https://jping.summerarea.com/
 
+![JPing screenshot](screenshot.png)
+
 Features
 ---------
 
