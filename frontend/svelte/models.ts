@@ -24,7 +24,12 @@ export interface Period {
   label: string;
   hours: number;
   buckets: number;
+  // Must divide a day, so buckets of an hour or longer start on the hour.
+  bucketMinutes: number;
 }
+
+// The time zone that buckets are aligned to and times are shown in.
+export type TimeZoneMode = 'local' | 'utc';
 
 // A period when JPing itself was running.
 export interface UpInterval {

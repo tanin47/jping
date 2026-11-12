@@ -28,6 +28,7 @@ public class Pinger {
   ScheduledExecutorService scheduler;
   ExecutorService pingExecutor;
   Instant uptimeStartedAt;
+  Thread shutdownHook;
 
   public Pinger(DatabaseService db) {
     this.db = db;
@@ -57,6 +58,12 @@ public class Pinger {
     var intervalMillis = UPTIME_UPDATE_INTERVAL.toMillis();
     scheduler.scheduleAtFixedRate(this::updateUptime, intervalMillis, intervalMillis, TimeUnit.MILLISECONDS);
     scheduleNextPing();
+
+    shutdownHook = new Thread(() -> {
+      logger.info("Received a shutdown signal. Stopping the pinger...");
+      stop();
+    }, "jping-pinger-shutdown");
+    Runtime.getRuntime().addShutdownHook(shutdownHook);
   }
 
   public synchronized void stop() {
@@ -73,7 +80,7 @@ public class Pinger {
   void updateUptime() {
     try {
       var endedAt = Instant.now().truncatedTo(ChronoUnit.MILLIS);
-      db.updateJpingUptimeEndedAt(uptimeStartedAt, endedAt);
+      db.updateJpingUptimeEndedAt(uptimeStartedAt, endedAt.plusSeconds(60));
       logger.info("Updated JPing's uptime (started at " + uptimeStartedAt + ") to end at " + endedAt);
     } catch (Exception e) {
       logger.log(Level.WARNING, "Could not update JPing's uptime", e);

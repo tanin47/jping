@@ -46,6 +46,20 @@ public class PingerTest {
   }
 
   @Test
+  void shutdownHookUpdatesUptimeAndStops() throws Exception {
+    var startedAt = server.pinger.uptimeStartedAt;
+    var hook = server.pinger.shutdownHook;
+    assertNotNull(hook);
+
+    Thread.sleep(50);
+    hook.run();
+
+    var intervals = db.listJpingUpIntervals(startedAt.minusSeconds(60), startedAt.plusSeconds(60));
+    assertTrue(intervals.getFirst().endedAt().isAfter(startedAt));
+    assertNull(server.pinger.scheduler);
+  }
+
+  @Test
   void recordsTheStatusCode() throws Exception {
     var url = "http://localhost:" + PORT + "/healthcheck";
     db.addWebsite(url);
