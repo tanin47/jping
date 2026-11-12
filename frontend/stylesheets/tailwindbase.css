@@ -2,3 +2,20 @@
 @plugin "daisyui" {
   themes: abyss;
 }
+
+/* Tooltips are always laid out even when hidden, so keep them narrow enough and anchored to the bar's
+   nearer edge to avoid overflowing the viewport (and causing horizontal scroll) on phones. */
+.tooltip[data-tip]::before {
+  max-width: min(20rem, 60vw);
+}
+
+.tooltip-align-start[data-tip]::before {
+  left: 0;
+  transform: translateY(var(--tt-pos, .25rem));
+}
+
+.tooltip-align-end[data-tip]::before {
+  left: auto;
+  right: 0;
+  transform: translateY(var(--tt-pos, .25rem));
+}

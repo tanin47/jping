@@ -1,6 +1,6 @@
 <script lang="ts"></script>
 
-<div class="tooltip h-full w-1 shrink-0" data-tip="Last 2 minutes: waiting for data" data-test-id="pending-bar">
+<div class="tooltip tooltip-align-end h-full w-1 shrink-0" data-tip="Last 2 minutes: waiting for data" data-test-id="pending-bar">
   <div class="pending h-full w-full rounded-sm bg-base-content"></div>
 </div>
 

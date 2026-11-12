@@ -138,3 +138,10 @@ export const DOT_COLOR: Record<Status, string> = {
   down: 'status-error',
   none: 'status-neutral',
 };
+
+// Anchors a tooltip to the nearer edge of the bar, given where it sits along the bar (0 to 1).
+export function tooltipAlign(fraction: number): string {
+  if (fraction < 1 / 3) return 'tooltip-align-start';
+  if (fraction > 2 / 3) return 'tooltip-align-end';
+  return '';
+}
