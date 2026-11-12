@@ -287,7 +287,7 @@ public class DatabaseService {
 
   /**
    * Returns the periods when JPing was running that overlap [start, end), ordered by start time.
-   * Each interval is clipped to [start, end).
+   * Each interval is clipped to [start, end). Intervals that overlap or touch are merged into one.
    */
   public List<UpInterval> listJpingUpIntervals(Instant start, Instant end) throws SQLException {
     try (
@@ -308,8 +308,23 @@ public class DatabaseService {
             endedAt.isAfter(end) ? end : endedAt
           ));
         }
-        return intervals;
+        return mergeUpIntervals(intervals);
       }
     }
+  }
+
+  /** Merges intervals that overlap or touch. The intervals must be ordered by startedAt. */
+  static List<UpInterval> mergeUpIntervals(List<UpInterval> intervals) {
+    var merged = new ArrayList<UpInterval>();
+    for (var interval : intervals) {
+      if (!merged.isEmpty() && !interval.startedAt().isAfter(merged.getLast().endedAt())) {
+        var last = merged.removeLast();
+        var endedAt = interval.endedAt().isAfter(last.endedAt()) ? interval.endedAt() : last.endedAt();
+        merged.add(new UpInterval(last.startedAt(), endedAt));
+      } else {
+        merged.add(interval);
+      }
+    }
+    return merged;
   }
 }
