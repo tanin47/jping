@@ -42,7 +42,7 @@ function reset() {
 }
 </script>
 
-<dialog class="modal" bind:this={dialog} onclose={reset}>
+<dialog class="modal modal-bottom sm:modal-middle" bind:this={dialog} onclose={reset}>
   <div class="modal-box">
     <h3 class="text-lg font-bold">Remove website?</h3>
     <p class="py-4">

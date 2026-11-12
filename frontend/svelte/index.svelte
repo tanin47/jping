@@ -21,6 +21,7 @@ import {
   formatPercent,
   formatTime,
   statusOf,
+  tooltipAlign,
 } from './uptime';
 
 let periodKey = $state('24h');
@@ -187,10 +188,10 @@ function onSiteRemoved(url: string) {
       </div>
 
       <div class="flex h-8 gap-px">
-        {#each buckets as bucket}
+        {#each buckets as bucket, i}
           <!-- Sized by duration, so the latest (partial) bucket is narrower and the timeline lines up with JPing's bar. -->
           <div
-            class="tooltip min-w-0"
+            class="tooltip min-w-0 {tooltipAlign((i + 0.5) / buckets.length)}"
             style="flex: {bucket.end.getTime() - bucket.start.getTime()} 1 0px;"
             data-tip={formatTip(bucket, period, timeZone)}
           >
@@ -209,13 +210,25 @@ function onSiteRemoved(url: string) {
 {/snippet}
 
 <div class="container mx-auto max-w-4xl p-4 sm:p-8 flex flex-col gap-6">
-  <header class="flex flex-wrap items-center gap-4">
+  <header class="flex flex-wrap items-center gap-x-4 gap-y-3">
     <div class="flex flex-1 items-center gap-0">
       <img src="/assets/images/logo.png" alt="" class="h-[32px]" />
       <h1 class="text-2xl font-bold">JPing</h1>
     </div>
+    <div class="flex w-full gap-2 sm:w-auto sm:gap-4">
+      <select class="select select-sm min-w-0 flex-1 sm:w-auto sm:flex-none" bind:value={timeZone} aria-label="Time zone" data-test-id="time-zone">
+        {#each TIME_ZONES as tz}
+          <option value={tz.key}>{tz.label}</option>
+        {/each}
+      </select>
+      <select class="select select-sm min-w-0 flex-1 sm:w-auto sm:flex-none" bind:value={periodKey} aria-label="Period">
+        {#each PERIODS as p}
+          <option value={p.key}>{p.label}</option>
+        {/each}
+      </select>
+    </div>
     <span
-      class="flex items-center gap-2 text-xs"
+      class="flex w-full items-center justify-end gap-2 text-xs"
       title={pullOk ? `Refreshes every ${PULL_INTERVAL_MS / 1000} seconds` : pullError}
       data-test-id="pull-status"
       data-test-value={pullOk ? 'ok' : 'failed'}
@@ -234,16 +247,6 @@ function onSiteRemoved(url: string) {
         {/if}
       </span>
     </span>
-    <select class="select select-sm w-auto" bind:value={timeZone} aria-label="Time zone" data-test-id="time-zone">
-      {#each TIME_ZONES as tz}
-        <option value={tz.key}>{tz.label}</option>
-      {/each}
-    </select>
-    <select class="select select-sm w-auto" bind:value={periodKey} aria-label="Period">
-      {#each PERIODS as p}
-        <option value={p.key}>{p.label}</option>
-      {/each}
-    </select>
   </header>
 
   {#if IS_ADMIN}
