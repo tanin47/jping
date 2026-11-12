@@ -84,4 +84,6 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
-          tags: tanin47/jping:${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+          tags: |
+            tanin47/jping:${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+            tanin47/jping:latest
