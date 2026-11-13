@@ -6,10 +6,7 @@ JPing
 [![codecov](https://codecov.io/gh/tanin47/jping/graph/badge.svg?token=XQKPZUG2LA)](https://codecov.io/gh/tanin47/jping)
 
 
-JPing is a minimal and robust website monitoring written in Java. The only thing it
-needs is a Postgres database.
-
-You can run it as a standalone server (using a single JAR file or the docker image) or embed it into your larger Java system.
+JPing is a minimal and robust website monitoring written in Java. You can run it as a standalone server (using a single JAR file or the docker image) or embed it into your larger Java system.
 
 You'll know your sites' uptime at all times. No more guesswork. Plus, it looks great on both desktop and mobile.
 
