@@ -31,7 +31,7 @@ Features
 Motivation
 -----------
 
-I run multiple VPSes for various side projects. One of my servers hosts all of my unpopular/low-traffic apps, and whenever one of them actually takes off, I migrate it over to its own dedicated VPS.
+I run multiple VPSes for various side projects. One of my servers hosts all of my low-traffic apps, and whenever one of them actually takes off, I migrate it over to its own dedicated VPS.
 
 With VPS, it requires more attention on uptime/reliability compared to using Vercel, Render, Heroku, and other PaaSes. I need a way to keep track my VPS's uptime and reliability.
 
@@ -152,19 +152,6 @@ password is empty.
 FAQ
 -----
 
-### Why is Minum chosen?
-
-Minum is the smallest web framework written in pure Java with *zero* dependencies. One of its goals is to avoid
-reflection and magic, which is great for embeddability.
-
-I've looked at a couple other options:
-
-* Javalin requires Kotlin runtime, which adds 2-3MB to the JAR.
-* Vert.x is not a minimal web framework. It focuses on reactivity.
-* Blade is comparable but doesn't seem to focus on avoiding reflection and magic.
-
-The above options also have external dependencies.
-
 ### What if we cannot open another port?
 
 Some services like Render or Heroku allow only one port to be served.
@@ -186,6 +173,15 @@ var response = client.send(httpRequest, HttpResponse.BodyHandlers.ofByteArray())
 
 // Return the response as-is
 ```
+
+### What are the dependencies?
+
+JPing aims to be as small as possible. Therefore, the dependencies are chosen because of their minimalism and small sizes.
+
+1. [Minum](https://github.com/byronka/minum): the smallest Java webapp framework.
+2. [JMigrate](https://github.com/tanin47/jmigrate): the simplest database schema migration management.
+3. [Postgres JDBC Driver](https://jdbc.postgresql.org/): Postgres is used as the database.
+4. [Minimal JSON](https://github.com/ralfstx/minimal-json): the smallest JSON library.
 
 How to develop
 ---------------
