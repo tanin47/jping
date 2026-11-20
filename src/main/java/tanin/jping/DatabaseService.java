@@ -4,6 +4,7 @@ import tanin.jmigrate.DatabaseConnection;
 import tanin.jmigrate.JMigrate;
 
 import java.sql.Connection;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Duration;
@@ -14,6 +15,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.logging.Logger;
 
 public class DatabaseService {
@@ -29,14 +31,33 @@ public class DatabaseService {
    * One slice of the uptime timeline, covering [start, end). Both ends are at the start of a minute.
    * total is the number of checks that should have run (one per minute); noData is the ones without a finished result.
    */
-  public record Bucket(Instant start, Instant end, int total, int successes, int failures) {
+  public record Bucket(
+    Instant start,
+    Instant end,
+    int total,
+    int successes,
+    int failures,
+    Latency latency,
+    List<FailureCount> failureCodes
+  ) {
     public int noData() {
       return Math.max(0, total - successes - failures);
     }
   }
 
-  /** A website with its uptime timeline, split into buckets ordered from oldest to newest. */
-  public record WebsiteUrlUptime(String url, List<Bucket> buckets) {}
+  /** Response times in milliseconds of the checks that got a response. */
+  public record Latency(long p50Ms, long p90Ms, long p99Ms, long maxMs) {}
+
+  /** The number of failed checks with a response code. A null response code means no response was received. */
+  public record FailureCount(Integer responseCode, int count) {}
+
+  public record Failure(Instant scheduledAt, Integer responseCode, String error) {}
+
+  /**
+   * A website with its uptime timeline, split into buckets ordered from oldest to newest.
+   * latency and lastFailure cover the whole range. Like a bucket's latency, they're null when there's no such check.
+   */
+  public record WebsiteUrlUptime(String url, List<Bucket> buckets, Latency latency, Failure lastFailure) {}
 
   public static final int DEFAULT_BUCKET_MINUTES = 60;
   public static final int MAX_UPTIME_BUCKET_COUNT = 500;
@@ -170,58 +191,153 @@ public class DatabaseService {
     return zoned.getHour() * 60 + zoned.getMinute();
   }
 
+  // A check is a success when it got a 2xx, 3xx, or 4xx response. Checks that haven't finished yet are left out,
+  // so they count as no data. Only checks that got a response have a meaningful response time.
+  private static final String SUCCESS = "response_code BETWEEN 200 AND 499";
+  private static final String FAILURE = "(response_code IS NULL OR response_code NOT BETWEEN 200 AND 499)";
+  private static final String LATENCY_COLUMNS = """
+    count(*) FILTER (WHERE response_code IS NOT NULL) AS responses,
+    round(percentile_disc(0.5) WITHIN GROUP (ORDER BY duration_ms) FILTER (WHERE response_code IS NOT NULL)) AS p50,
+    round(percentile_disc(0.9) WITHIN GROUP (ORDER BY duration_ms) FILTER (WHERE response_code IS NOT NULL)) AS p90,
+    round(percentile_disc(0.99) WITHIN GROUP (ORDER BY duration_ms) FILTER (WHERE response_code IS NOT NULL)) AS p99,
+    round(max(duration_ms) FILTER (WHERE response_code IS NOT NULL)) AS max
+    """;
+  private static final String FINISHED_CHECKS_IN_RANGE = """
+    SELECT *, extract(epoch FROM finished_at - started_at) * 1000 AS duration_ms
+    FROM response
+    WHERE scheduled_at >= ? AND scheduled_at < ? AND finished_at IS NOT NULL
+    """;
+
+  private static class BucketStats {
+    int successes;
+    int failures;
+    Latency latency;
+    final List<FailureCount> failureCodes = new ArrayList<>();
+  }
+
   /** Returns every website with its uptime split into the buckets between consecutive edges, which must be ascending. */
   public List<WebsiteUrlUptime> listWebsiteUptimes(List<Instant> edges) throws SQLException {
     var bucketCount = edges.size() - 1;
-    var alignedStart = edges.getFirst();
-    var alignedEnd = edges.getLast();
+    var start = Timestamp.from(edges.getFirst());
+    var end = Timestamp.from(edges.getLast());
 
-    var countsByUrl = new HashMap<String, int[][]>();
-    try (
-      var conn = connect();
-      // width_bucket(value, thresholds) returns i when thresholds[i] <= value < thresholds[i + 1] (1-based),
-      // so each bucket includes its start and excludes its end.
-      // Checks that haven't finished yet are left out, so they count as no data.
-      var stmt = conn.prepareStatement("""
-        SELECT
-          url,
-          width_bucket(scheduled_at, ?::timestamptz[]) AS bucket,
-          count(*) FILTER (WHERE response_code BETWEEN 200 AND 499) AS successes,
-          count(*) FILTER (WHERE response_code IS NULL OR response_code NOT BETWEEN 200 AND 499) AS failures
-        FROM response
-        WHERE scheduled_at >= ? AND scheduled_at < ? AND finished_at IS NOT NULL
-        GROUP BY url, bucket
-        """)
-    ) {
+    var statsByUrl = new HashMap<String, BucketStats[]>();
+    var latencyByUrl = new HashMap<String, Latency>();
+    var lastFailureByUrl = new HashMap<String, Failure>();
+    try (var conn = connect()) {
       var bucketStarts = new Timestamp[bucketCount];
       for (int i = 0; i < bucketCount; i++) {
         bucketStarts[i] = Timestamp.from(edges.get(i));
       }
-      stmt.setArray(1, conn.createArrayOf("timestamptz", bucketStarts));
-      stmt.setTimestamp(2, Timestamp.from(alignedStart));
-      stmt.setTimestamp(3, Timestamp.from(alignedEnd));
+      var bucketStartsArray = conn.createArrayOf("timestamptz", bucketStarts);
 
-      try (var rs = stmt.executeQuery()) {
-        while (rs.next()) {
-          var counts = countsByUrl.computeIfAbsent(rs.getString("url"), k -> new int[bucketCount][2]);
-          var index = rs.getInt("bucket") - 1;
-          counts[index][0] = rs.getInt("successes");
-          counts[index][1] = rs.getInt("failures");
+      // width_bucket(value, thresholds) returns i when thresholds[i] <= value < thresholds[i + 1] (1-based),
+      // so each bucket includes its start and excludes its end.
+      try (var stmt = conn.prepareStatement(
+        "SELECT url, width_bucket(scheduled_at, ?::timestamptz[]) AS bucket, " +
+          "count(*) FILTER (WHERE " + SUCCESS + ") AS successes, " +
+          "count(*) FILTER (WHERE " + FAILURE + ") AS failures, " +
+          LATENCY_COLUMNS +
+          "FROM (" + FINISHED_CHECKS_IN_RANGE + ") checks GROUP BY url, bucket"
+      )) {
+        stmt.setArray(1, bucketStartsArray);
+        stmt.setTimestamp(2, start);
+        stmt.setTimestamp(3, end);
+        try (var rs = stmt.executeQuery()) {
+          while (rs.next()) {
+            var stats = bucketStatsOf(statsByUrl, rs.getString("url"), bucketCount, rs.getInt("bucket"));
+            stats.successes = rs.getInt("successes");
+            stats.failures = rs.getInt("failures");
+            stats.latency = readLatency(rs);
+          }
+        }
+      }
+
+      try (var stmt = conn.prepareStatement(
+        "SELECT url, width_bucket(scheduled_at, ?::timestamptz[]) AS bucket, response_code, count(*) AS count " +
+          "FROM (" + FINISHED_CHECKS_IN_RANGE + ") checks WHERE " + FAILURE + " " +
+          "GROUP BY url, bucket, response_code ORDER BY url, bucket, response_code NULLS LAST"
+      )) {
+        stmt.setArray(1, bucketStartsArray);
+        stmt.setTimestamp(2, start);
+        stmt.setTimestamp(3, end);
+        try (var rs = stmt.executeQuery()) {
+          while (rs.next()) {
+            bucketStatsOf(statsByUrl, rs.getString("url"), bucketCount, rs.getInt("bucket")).failureCodes.add(
+              new FailureCount((Integer) rs.getObject("response_code"), rs.getInt("count"))
+            );
+          }
+        }
+      }
+
+      // Percentiles of the whole range can't be combined from the buckets' percentiles, so they're computed separately.
+      try (var stmt = conn.prepareStatement(
+        "SELECT url, " + LATENCY_COLUMNS + "FROM (" + FINISHED_CHECKS_IN_RANGE + ") checks GROUP BY url"
+      )) {
+        stmt.setTimestamp(1, start);
+        stmt.setTimestamp(2, end);
+        try (var rs = stmt.executeQuery()) {
+          while (rs.next()) {
+            latencyByUrl.put(rs.getString("url"), readLatency(rs));
+          }
+        }
+      }
+
+      try (var stmt = conn.prepareStatement(
+        "SELECT DISTINCT ON (url) url, scheduled_at, response_code, error " +
+          "FROM (" + FINISHED_CHECKS_IN_RANGE + ") checks WHERE " + FAILURE + " " +
+          "ORDER BY url, scheduled_at DESC"
+      )) {
+        stmt.setTimestamp(1, start);
+        stmt.setTimestamp(2, end);
+        try (var rs = stmt.executeQuery()) {
+          while (rs.next()) {
+            lastFailureByUrl.put(
+              rs.getString("url"),
+              new Failure(
+                rs.getTimestamp("scheduled_at").toInstant(),
+                (Integer) rs.getObject("response_code"),
+                rs.getString("error")
+              )
+            );
+          }
         }
       }
     }
 
     var result = new ArrayList<WebsiteUrlUptime>();
     for (var website : listWebsites()) {
-      var counts = countsByUrl.getOrDefault(website.url(), new int[bucketCount][2]);
+      var stats = statsByUrl.get(website.url());
       var buckets = new ArrayList<Bucket>(bucketCount);
       for (int i = 0; i < bucketCount; i++) {
         var total = (int) Duration.between(edges.get(i), edges.get(i + 1)).toMinutes();
-        buckets.add(new Bucket(edges.get(i), edges.get(i + 1), total, counts[i][0], counts[i][1]));
+        var s = stats == null || stats[i] == null ? new BucketStats() : stats[i];
+        buckets.add(new Bucket(edges.get(i), edges.get(i + 1), total, s.successes, s.failures, s.latency, s.failureCodes));
       }
-      result.add(new WebsiteUrlUptime(website.url(), buckets));
+      result.add(new WebsiteUrlUptime(
+        website.url(),
+        buckets,
+        latencyByUrl.get(website.url()),
+        lastFailureByUrl.get(website.url())
+      ));
     }
     return result;
+  }
+
+  private static BucketStats bucketStatsOf(Map<String, BucketStats[]> statsByUrl, String url, int bucketCount, int bucket) {
+    var stats = statsByUrl.computeIfAbsent(url, k -> new BucketStats[bucketCount]);
+    var index = bucket - 1;
+    if (stats[index] == null) {
+      stats[index] = new BucketStats();
+    }
+    return stats[index];
+  }
+
+  private static Latency readLatency(ResultSet rs) throws SQLException {
+    if (rs.getInt("responses") == 0) {
+      return null;
+    }
+    return new Latency(rs.getLong("p50"), rs.getLong("p90"), rs.getLong("p99"), rs.getLong("max"));
   }
 
   public void insertJpingUptime(Instant startedAt, Instant endedAt) throws SQLException {
