@@ -216,6 +216,44 @@ public class WebServer {
       );
     });
 
+    // The failed checks and the minutes without data of a website, e.g. for one bucket of its timeline.
+    // GET /api/websites/issues?url=<URL-encoded url>&start=<ISO-8601 instant>&end=<ISO-8601 instant>
+    wf.registerPath(GET, "api/websites/issues", req -> {
+      var rawUrl = req.getRequestLine().queryString().get("url");
+      if (rawUrl == null || rawUrl.isEmpty()) {
+        return error(StatusLine.StatusCode.CODE_400_BAD_REQUEST, "url is required.");
+      }
+      String url;
+      try {
+        // Minum doesn't decode query string values.
+        url = URLDecoder.decode(rawUrl, StandardCharsets.UTF_8);
+      } catch (IllegalArgumentException e) {
+        return error(StatusLine.StatusCode.CODE_400_BAD_REQUEST, "url must be URL-encoded.");
+      }
+      var range = readTimeRange(req);
+      if (range.error() != null) {
+        return error(StatusLine.StatusCode.CODE_400_BAD_REQUEST, range.error());
+      }
+
+      var failures = new JsonArray();
+      for (var failure : db.listFailures(url, range.start(), range.end())) {
+        failures.add(toJson(failure));
+      }
+      var noData = new JsonArray();
+      for (var minute : db.listNoDataMinutes(url, range.start(), range.end())) {
+        noData.add(minute.toString());
+      }
+      return json(
+        StatusLine.StatusCode.CODE_200_OK,
+        new JsonObject()
+          .add("url", url)
+          .add("start", range.start().toString())
+          .add("end", range.end().toString())
+          .add("failures", failures)
+          .add("noData", noData)
+      );
+    });
+
     // GET /api/jping/uptime?start=<ISO-8601 instant>&end=<ISO-8601 instant>
     wf.registerPath(GET, "api/jping/uptime", req -> {
       var range = readTimeRange(req);

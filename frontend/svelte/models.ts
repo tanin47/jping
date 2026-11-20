@@ -33,6 +33,24 @@ export interface Failure {
   error: string | null;
 }
 
+// A minute with a failed check, or without a finished check ('noData').
+export interface Issue {
+  kind: 'failure' | 'noData';
+  minute: Date;
+  responseCode: number | null;
+  error: string | null;
+}
+
+// Issues in consecutive minutes with the same kind, response code, and error.
+export interface IssueGroup {
+  kind: Issue['kind'];
+  first: Date;
+  last: Date;
+  count: number;
+  responseCode: number | null;
+  error: string | null;
+}
+
 export interface WebsiteUrl {
   url: string;
 }

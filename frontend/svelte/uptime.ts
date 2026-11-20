@@ -1,5 +1,5 @@
 // Helpers shared by the website timelines and the JPing uptime bar.
-import type { Period, Status, TimeZoneMode } from './models';
+import type { Issue, IssueGroup, Period, Status, TimeZoneMode } from './models';
 
 // Shorter periods get fewer, wider buckets, so switching periods visibly changes the timeline.
 // Every bucket covers a round duration: 1 hour, 4 hours, 12 hours, and 1 day.
@@ -58,8 +58,19 @@ export function bucketParams(p: Period, tz: TimeZoneMode): string {
   return `${rangeParams(p, tz)}&${new URLSearchParams({ bucketMinutes: String(p.bucketMinutes), timezone })}`;
 }
 
-export function statusOf(uptime: number | null): Status {
-  if (uptime === null) return 'none';
+// An uptime as whole numbers (e.g. successful checks out of all checks), so it can be formatted exactly.
+export interface Ratio {
+  part: number;
+  whole: number;
+}
+
+export function ratioOf(part: number, whole: number): Ratio | null {
+  return whole === 0 ? null : { part, whole };
+}
+
+export function statusOf(ratio: Ratio | null): Status {
+  if (ratio === null) return 'none';
+  const uptime = (ratio.part * 100) / ratio.whole;
   if (uptime >= 99.9) return 'up';
   if (uptime >= 95) return 'degraded';
   return 'down';
@@ -73,9 +84,16 @@ export function bucketStatus(successes: number, failures: number, noData: number
   return 'down';
 }
 
-export function formatPercent(value: number | null): string {
-  if (value === null) return 'No data';
-  return value >= 99.995 ? '100%' : `${value.toFixed(2)}%`;
+const PERCENT_DECIMALS = 8;
+
+// Rounds down, so it shows 100% only when everything succeeded. BigInt keeps all 8 decimals exact,
+// which floating-point math can't do for millisecond durations.
+export function formatPercent(ratio: Ratio | null): string {
+  if (ratio === null) return 'No data';
+  const scale = 10n ** BigInt(PERCENT_DECIMALS);
+  const scaled = (BigInt(ratio.part) * 100n * scale) / BigInt(ratio.whole);
+  const fraction = (scaled % scale).toString().padStart(PERCENT_DECIMALS, '0').replace(/0+$/, '');
+  return `${scaled / scale}${fraction ? `.${fraction}` : ''}%`;
 }
 
 function timeZoneOf(tz: TimeZoneMode): string | undefined {
@@ -124,6 +142,35 @@ export function formatMs(ms: number): string {
 
 export function formatResponseCode(responseCode: number | null): string {
   return responseCode === null ? 'No response' : String(responseCode);
+}
+
+// Merges issues that are one minute apart and have the same kind, response code, and error,
+// so an outage reads as one row. The issues must be ordered from oldest to newest.
+export function groupIssues(issues: Issue[]): IssueGroup[] {
+  const groups: IssueGroup[] = [];
+  for (const issue of issues) {
+    const last = groups[groups.length - 1];
+    if (
+      last &&
+      issue.minute.getTime() - last.last.getTime() === MINUTE_MS &&
+      issue.kind === last.kind &&
+      issue.responseCode === last.responseCode &&
+      issue.error === last.error
+    ) {
+      last.last = issue.minute;
+      last.count++;
+    } else {
+      groups.push({
+        kind: issue.kind,
+        first: issue.minute,
+        last: issue.minute,
+        count: 1,
+        responseCode: issue.responseCode,
+        error: issue.error,
+      });
+    }
+  }
+  return groups;
 }
 
 export const BAR_COLOR: Record<Status, string> = {
