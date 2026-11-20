@@ -115,13 +115,21 @@ function alignOf(segment: Segment): string {
   const middle = (segment.start.getTime() + segment.end.getTime()) / 2 - range.start.getTime();
   return tooltipAlign(total === 0 ? 0.5 : middle / total);
 }
-
-function tipOf(segment: Segment): string {
-  const span = `${formatTime(segment.start, period, timeZone)} – ${formatTime(segment.end, period, timeZone)}`;
-  if (segment.kind === 'none') return `${span}: No data`;
-  return `${span}: ${LABEL[segment.kind]} for ${formatDuration(segment.end.getTime() - segment.start.getTime())}`;
-}
 </script>
+
+{#snippet segmentTip(segment: Segment)}
+  <div class="tooltip-content flex flex-col gap-1.5 text-left text-xs tabular-nums">
+    <div class="font-semibold">{formatTime(segment.start, period, timeZone)} – {formatTime(segment.end, period, timeZone)}</div>
+    <span class="flex items-center gap-1">
+      <span class="status {DOT_COLOR[segment.kind]}"></span>
+      {#if segment.kind === 'none'}
+        No data
+      {:else}
+        {LABEL[segment.kind]} for {formatDuration(segment.end.getTime() - segment.start.getTime())}
+      {/if}
+    </span>
+  </div>
+{/snippet}
 
 <div class="card bg-base-200 border border-primary/40" data-test-id="jping-uptime">
   <div class="card-body p-4 gap-3">
@@ -148,16 +156,17 @@ function tipOf(segment: Segment): string {
         <div class="flex flex-1 min-w-0 rounded-sm bg-base-300">
           {#each segments as segment}
             <div class="relative h-full min-w-px" style="flex: {segment.end.getTime() - segment.start.getTime()} 1 0px;">
-              <div class="tooltip block h-full w-full {alignOf(segment)}" data-tip={tipOf(segment)}>
+              <div class="tooltip block h-full w-full {alignOf(segment)}">
+                {@render segmentTip(segment)}
                 <div class="h-full w-full {BAR_COLOR[segment.kind]} hover:opacity-70"></div>
               </div>
               {#if segment.kind === 'down'}
                 <!-- A sibling of the bar's tooltip so hovering the caret doesn't open both tooltips. -->
                 <div
                   class="tooltip absolute bottom-full {alignOf(segment)} left-1/2 -translate-x-1/2 px-1 pb-0.5 cursor-default hover:opacity-70"
-                  data-tip={tipOf(segment)}
                   data-test-id="jping-uptime-down-caret"
                 >
+                  {@render segmentTip(segment)}
                   <div class="h-0 w-0 border-x-[5px] border-t-[6px] border-x-transparent border-t-error"></div>
                 </div>
               {/if}

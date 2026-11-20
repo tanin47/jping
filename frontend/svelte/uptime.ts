@@ -118,6 +118,14 @@ export function formatDuration(ms: number): string {
   return `${Math.floor(hours / 24)}d ${hours % 24}h`;
 }
 
+export function formatMs(ms: number): string {
+  return ms < 1000 ? `${ms}ms` : `${Number((ms / 1000).toFixed(1))}s`;
+}
+
+export function formatResponseCode(responseCode: number | null): string {
+  return responseCode === null ? 'No response' : String(responseCode);
+}
+
 export const BAR_COLOR: Record<Status, string> = {
   up: 'bg-success',
   degraded: 'bg-warning',

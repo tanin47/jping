@@ -36,25 +36,38 @@ public class ListWebsiteUptimesTest {
   }
 
   void addCheck(Instant scheduledAt, Integer responseCode, boolean finished) throws Exception {
+    insertCheck(scheduledAt, responseCode, finished ? 1000L : null, null);
+  }
+
+  void addCheck(Instant scheduledAt, Integer responseCode, long durationMillis, String error) throws Exception {
+    insertCheck(scheduledAt, responseCode, durationMillis, error);
+  }
+
+  void insertCheck(Instant scheduledAt, Integer responseCode, Long durationMillis, String error) throws Exception {
     try (
       var conn = db.connect();
       var stmt = conn.prepareStatement(
-        "INSERT INTO response (url, scheduled_at, started_at, finished_at, response_code) VALUES (?, ?, ?, ?, ?)"
+        "INSERT INTO response (url, scheduled_at, started_at, finished_at, response_code, error) VALUES (?, ?, ?, ?, ?, ?)"
       )
     ) {
       stmt.setString(1, URL);
       stmt.setTimestamp(2, Timestamp.from(scheduledAt));
       stmt.setTimestamp(3, Timestamp.from(scheduledAt));
-      stmt.setTimestamp(4, finished ? Timestamp.from(scheduledAt.plusSeconds(1)) : null);
+      stmt.setTimestamp(4, durationMillis == null ? null : Timestamp.from(scheduledAt.plusMillis(durationMillis)));
       stmt.setObject(5, responseCode);
+      stmt.setString(6, error);
       stmt.executeUpdate();
     }
   }
 
-  List<DatabaseService.Bucket> buckets(Instant start, Instant end, int bucketMinutes) throws Exception {
+  DatabaseService.WebsiteUrlUptime website(Instant start, Instant end, int bucketMinutes) throws Exception {
     var websites = db.listWebsiteUptimes(DatabaseService.bucketEdges(start, end, bucketMinutes, ZoneOffset.UTC));
     assertEquals(1, websites.size());
-    return websites.getFirst().buckets();
+    return websites.getFirst();
+  }
+
+  List<DatabaseService.Bucket> buckets(Instant start, Instant end, int bucketMinutes) throws Exception {
+    return website(start, end, bucketMinutes).buckets();
   }
 
   @Test
@@ -164,6 +177,85 @@ public class ListWebsiteUptimesTest {
       assertNull(rs.getString("error"));
       assertFalse(rs.next());
     }
+  }
+
+  @Test
+  void latencyPercentilesLeaveOutChecksWithoutAResponse() throws Exception {
+    for (int i = 1; i <= 9; i++) {
+      addCheck(START.plusSeconds(i), 200, i * 100L, null);
+    }
+    addCheck(START.plusSeconds(10), 500, 1000L, null);
+    addCheck(START.plusSeconds(11), null, 5000L, "Timed out after 5 seconds");
+
+    var bucket = buckets(START, END, 1).getFirst();
+    assertEquals(new DatabaseService.Latency(500, 900, 1000, 1000), bucket.latency());
+  }
+
+  @Test
+  void latencyIsNullWithoutAnyResponse() throws Exception {
+    addCheck(START, null, 5000L, "Timed out after 5 seconds");
+
+    var website = website(START, END, 1);
+    assertNull(website.buckets().get(0).latency());
+    assertNull(website.buckets().get(1).latency());
+    assertNull(website.latency());
+  }
+
+  @Test
+  void latencyOfTheRangeIsComputedFromAllItsChecks() throws Exception {
+    // Bucket 0 has 100ms and 200ms, bucket 1 has 300ms, 400ms, and 500ms.
+    addCheck(START, 200, 100L, null);
+    addCheck(START.plusSeconds(10), 200, 200L, null);
+    addCheck(START.plusSeconds(60), 200, 300L, null);
+    addCheck(START.plusSeconds(70), 200, 400L, null);
+    addCheck(START.plusSeconds(80), 200, 500L, null);
+
+    var website = website(START, END, 1);
+    assertEquals(new DatabaseService.Latency(100, 200, 200, 200), website.buckets().get(0).latency());
+    assertEquals(new DatabaseService.Latency(400, 500, 500, 500), website.buckets().get(1).latency());
+    assertEquals(new DatabaseService.Latency(300, 500, 500, 500), website.latency());
+  }
+
+  @Test
+  void groupsFailuresByResponseCode() throws Exception {
+    addCheck(START, 200, 100L, null);
+    addCheck(START.plusSeconds(1), 404, 100L, null);
+    addCheck(START.plusSeconds(2), 503, 100L, null);
+    addCheck(START.plusSeconds(3), null, 5000L, "Timed out after 5 seconds");
+    addCheck(START.plusSeconds(4), 500, 100L, null);
+    addCheck(START.plusSeconds(5), null, 10L, "ConnectException");
+    addCheck(START.plusSeconds(6), 500, 100L, null);
+
+    var buckets = buckets(START, END, 1);
+    assertEquals(
+      List.of(
+        new DatabaseService.FailureCount(500, 2),
+        new DatabaseService.FailureCount(503, 1),
+        new DatabaseService.FailureCount(null, 2)
+      ),
+      buckets.get(0).failureCodes()
+    );
+    assertEquals(List.of(), buckets.get(1).failureCodes());
+  }
+
+  @Test
+  void lastFailureIsTheLatestFailedCheckInTheRange() throws Exception {
+    addCheck(START, 500, 100L, null);
+    addCheck(START.plusSeconds(60), null, 10L, "ConnectException");
+    addCheck(START.plusSeconds(120), 200, 100L, null);
+    addCheck(END, 503, 100L, null);
+
+    assertEquals(
+      new DatabaseService.Failure(START.plusSeconds(60), null, "ConnectException"),
+      website(START, END, 1).lastFailure()
+    );
+  }
+
+  @Test
+  void lastFailureIsNullWithoutAnyFailure() throws Exception {
+    addCheck(START, 200, 100L, null);
+
+    assertNull(website(START, END, 1).lastFailure());
   }
 
   void assertBucket(DatabaseService.Bucket bucket, int total, int successes, int failures, int noData) {

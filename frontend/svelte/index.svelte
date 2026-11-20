@@ -6,7 +6,7 @@ import JpingUptimeBar from './_jping_uptime_bar.svelte';
 import PendingBar from './_pending_bar.svelte';
 import RemoveSiteDialog from './_remove_site_dialog.svelte';
 import { IS_ADMIN, api } from './globals';
-import type { Bucket, Period, Site, Status, TimeZoneMode, WebsiteUrl } from './models';
+import type { Bucket, Failure, Period, Site, Status, TimeZoneMode, WebsiteUrl } from './models';
 import {
   BAR_COLOR,
   DOT_COLOR,
@@ -18,7 +18,9 @@ import {
   bucketStatus,
   formatAxis,
   formatDateTime,
+  formatMs,
   formatPercent,
+  formatResponseCode,
   formatTime,
   statusOf,
   tooltipAlign,
@@ -67,6 +69,17 @@ function toBucket(json: any): Bucket {
     failures: json.failures,
     noData: json.noData,
     status: bucketStatus(json.successes, json.failures, json.noData),
+    latency: json.latency,
+    failureCodes: json.failureCodes,
+  };
+}
+
+function toFailure(json: any): Failure | null {
+  if (json === null) return null;
+  return {
+    scheduledAt: new Date(json.scheduledAt),
+    responseCode: json.responseCode,
+    error: json.error,
   };
 }
 
@@ -98,13 +111,14 @@ function emptyBuckets(p: Period, tz: TimeZoneMode): Bucket[] {
       failures: 0,
       noData: total,
       status: 'none' as Status,
+      latency: null,
+      failureCodes: [],
     };
   });
 }
 
-function formatTip(bucket: Bucket, p: Period, tz: TimeZoneMode): string {
-  const range = `${formatTime(bucket.start, p, tz)} – ${formatTime(bucket.end, p, tz)}`;
-  return `${range}: ${bucket.successes} successes, ${bucket.failures} failures, ${bucket.noData} no data, ${bucket.total} total`;
+function formatFailure(failure: Failure): string {
+  return failure.responseCode === null && failure.error ? failure.error : formatResponseCode(failure.responseCode);
 }
 
 // --- Server calls ---
@@ -125,6 +139,8 @@ async function loadSites(p: Period, tz: TimeZoneMode) {
     sites = (json.websites as any[]).map((w) => ({
       url: w.url,
       buckets: (w.buckets as any[]).map(toBucket),
+      latency: w.latency,
+      lastFailure: toFailure(w.lastFailure),
     }));
   } catch (e) {
     if (request !== latestRequest) return;
@@ -148,7 +164,7 @@ $effect(() => {
 // --- Add website ---
 
 function onSiteAdded(website: WebsiteUrl) {
-  sites.push({ ...website, buckets: emptyBuckets(period, timeZone) });
+  sites.push({ ...website, buckets: emptyBuckets(period, timeZone), latency: null, lastFailure: null });
   loadSites(period, timeZone);
 }
 
@@ -164,6 +180,31 @@ function onSiteRemoved(url: string) {
   sites = sites.filter((s) => s.url !== url);
 }
 </script>
+
+{#snippet bucketTip(bucket: Bucket)}
+  <div class="tooltip-content flex flex-col gap-1.5 text-left text-xs tabular-nums">
+    <div class="font-semibold">{formatTime(bucket.start, period, timeZone)} – {formatTime(bucket.end, period, timeZone)}</div>
+    <div class="flex flex-wrap gap-x-3">
+      <span class="flex items-center gap-1"><span class="status {DOT_COLOR.up}"></span>{bucket.successes} up</span>
+      <span class="flex items-center gap-1"><span class="status {DOT_COLOR.down}"></span>{bucket.failures} down</span>
+      <span class="flex items-center gap-1"><span class="status {DOT_COLOR.none}"></span>{bucket.noData} no data</span>
+    </div>
+    {#if bucket.latency}
+      <div class="grid grid-cols-[auto_auto] gap-x-6 border-t border-current/20 pt-1.5">
+        <span>p50</span><span class="text-right">{formatMs(bucket.latency.p50Ms)}</span>
+        <span>p90</span><span class="text-right">{formatMs(bucket.latency.p90Ms)}</span>
+        <span>max</span><span class="text-right">{formatMs(bucket.latency.maxMs)}</span>
+      </div>
+    {/if}
+    {#if bucket.failureCodes.length > 0}
+      <div class="grid grid-cols-[auto_auto] gap-x-6 border-t border-current/20 pt-1.5">
+        {#each bucket.failureCodes as failureCode}
+          <span>{formatResponseCode(failureCode.responseCode)}</span><span class="text-right">×{failureCode.count}</span>
+        {/each}
+      </div>
+    {/if}
+  </div>
+{/snippet}
 
 {#snippet timeline(site: Site)}
   {@const buckets = site.buckets}
@@ -193,8 +234,8 @@ function onSiteRemoved(url: string) {
           <div
             class="tooltip min-w-0 {tooltipAlign((i + 0.5) / buckets.length)}"
             style="flex: {bucket.end.getTime() - bucket.start.getTime()} 1 0px;"
-            data-tip={formatTip(bucket, period, timeZone)}
           >
+            {@render bucketTip(bucket)}
             <div class="h-full w-full rounded-sm {BAR_COLOR[bucket.status]} hover:opacity-70"></div>
           </div>
         {/each}
@@ -205,6 +246,24 @@ function onSiteRemoved(url: string) {
         <span>{formatAxis(buckets[0].start, period, timeZone)}</span>
         <span>Now</span>
       </div>
+
+      {#if site.latency || site.lastFailure}
+        <div class="flex flex-col gap-0.5 text-xs opacity-60">
+          {#if site.latency}
+            <div class="flex flex-wrap gap-x-3 tabular-nums" data-test-id="website-latency">
+              <span>p50 {formatMs(site.latency.p50Ms)}</span>
+              <span>p90 {formatMs(site.latency.p90Ms)}</span>
+              <span>p99 {formatMs(site.latency.p99Ms)}</span>
+              <span>max {formatMs(site.latency.maxMs)}</span>
+            </div>
+          {/if}
+          {#if site.lastFailure}
+            <div class="truncate" data-test-id="website-last-failure">
+              Last failure: {formatFailure(site.lastFailure)} · {formatTime(site.lastFailure.scheduledAt, period, timeZone)}
+            </div>
+          {/if}
+        </div>
+      {/if}
     </div>
   </div>
 {/snippet}

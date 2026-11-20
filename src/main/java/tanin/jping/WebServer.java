@@ -390,11 +390,48 @@ public class WebServer {
           .add("successes", bucket.successes())
           .add("failures", bucket.failures())
           .add("noData", bucket.noData())
+          .add("latency", toJson(bucket.latency()))
+          .add("failureCodes", toJson(bucket.failureCodes()))
       );
     }
     return new JsonObject()
       .add("url", website.url())
-      .add("buckets", buckets);
+      .add("buckets", buckets)
+      .add("latency", toJson(website.latency()))
+      .add("lastFailure", toJson(website.lastFailure()));
+  }
+
+  static JsonValue toJson(DatabaseService.Latency latency) {
+    if (latency == null) {
+      return Json.NULL;
+    }
+    return new JsonObject()
+      .add("p50Ms", latency.p50Ms())
+      .add("p90Ms", latency.p90Ms())
+      .add("p99Ms", latency.p99Ms())
+      .add("maxMs", latency.maxMs());
+  }
+
+  static JsonArray toJson(List<DatabaseService.FailureCount> failureCodes) {
+    var array = new JsonArray();
+    for (var failureCode : failureCodes) {
+      array.add(
+        new JsonObject()
+          .add("responseCode", failureCode.responseCode() == null ? Json.NULL : Json.value(failureCode.responseCode()))
+          .add("count", failureCode.count())
+      );
+    }
+    return array;
+  }
+
+  static JsonValue toJson(DatabaseService.Failure failure) {
+    if (failure == null) {
+      return Json.NULL;
+    }
+    return new JsonObject()
+      .add("scheduledAt", failure.scheduledAt().toString())
+      .add("responseCode", failure.responseCode() == null ? Json.NULL : Json.value(failure.responseCode()))
+      .add("error", failure.error() == null ? Json.NULL : Json.value(failure.error()));
   }
 
   static JsonObject toJson(DatabaseService.WebsiteUrl website) {

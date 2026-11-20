@@ -9,6 +9,28 @@ export interface Bucket {
   failures: number;
   noData: number;
   status: Status;
+  latency: Latency | null; // null when no check got a response.
+  failureCodes: FailureCount[];
+}
+
+// Response times in milliseconds of the checks that got a response.
+export interface Latency {
+  p50Ms: number;
+  p90Ms: number;
+  p99Ms: number;
+  maxMs: number;
+}
+
+// responseCode is null when no response was received (e.g. timeout or connection error).
+export interface FailureCount {
+  responseCode: number | null;
+  count: number;
+}
+
+export interface Failure {
+  scheduledAt: Date;
+  responseCode: number | null;
+  error: string | null;
 }
 
 export interface WebsiteUrl {
@@ -17,6 +39,9 @@ export interface WebsiteUrl {
 
 export interface Site extends WebsiteUrl {
   buckets: Bucket[];
+  // Both cover the whole period.
+  latency: Latency | null;
+  lastFailure: Failure | null;
 }
 
 export interface Period {
