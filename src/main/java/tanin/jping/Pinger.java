@@ -20,7 +20,8 @@ public class Pinger {
   private static final Logger logger = Logger.getLogger(Pinger.class.getName());
 
   static final Duration UPTIME_UPDATE_INTERVAL = Duration.ofSeconds(30);
-  static final Duration PING_TIMEOUT = Duration.ofSeconds(10);
+  static final Duration PING_TIMEOUT = Duration.ofSeconds(5);
+  static final int PING_RETRIES = 3;
 
   final DatabaseService db;
   final HttpClient httpClient;
@@ -122,10 +123,35 @@ public class Pinger {
       return;
     }
 
+    Attempt attempt = null;
+    for (var i = 0; i <= PING_RETRIES; i++) {
+      attempt = attempt(url);
+      var durationMillis = Duration.between(attempt.startedAt(), attempt.finishedAt()).toMillis();
+      if (attempt.error() == null) {
+        logger.info("Pinged " + url + " (scheduled at " + scheduledAt + "): status " + attempt.responseCode() + " in " + durationMillis + "ms");
+        break;
+      }
+      logger.warning("Pinging " + url + " (scheduled at " + scheduledAt + ", attempt " + (i + 1) + " of " + (PING_RETRIES + 1) + ") failed after " + durationMillis + "ms: " + attempt.error());
+      if (Thread.currentThread().isInterrupted()) {
+        break;
+      }
+    }
+
+    try {
+      if (!db.finishResponse(url, scheduledAt, attempt.startedAt(), attempt.finishedAt(), attempt.responseCode(), attempt.error())) {
+        logger.info("Skipped updating the response for " + url + " (scheduled at " + scheduledAt + ") because it's already finished");
+      }
+    } catch (Exception e) {
+      logger.log(Level.WARNING, "Could not update the response row for " + url, e);
+    }
+  }
+
+  record Attempt(Instant startedAt, Instant finishedAt, Integer responseCode, String error) {}
+
+  Attempt attempt(String url) {
     Integer responseCode = null;
     String error = null;
-    var pingStartedAt = Instant.now();
-    var requestStartedAt = System.nanoTime();
+    var startedAt = Instant.now();
     try {
       var request = HttpRequest.newBuilder(URI.create(url))
         .timeout(PING_TIMEOUT)
@@ -141,21 +167,6 @@ public class Pinger {
     } catch (Exception e) {
       error = e.getMessage() == null ? e.getClass().getSimpleName() : e.getClass().getSimpleName() + ": " + e.getMessage();
     }
-
-    var finishedAt = Instant.now();
-    var durationMillis = (System.nanoTime() - requestStartedAt) / 1_000_000;
-    if (error == null) {
-      logger.info("Pinged " + url + " (scheduled at " + scheduledAt + "): status " + responseCode + " in " + durationMillis + "ms");
-    } else {
-      logger.warning("Pinging " + url + " (scheduled at " + scheduledAt + ") failed after " + durationMillis + "ms: " + error);
-    }
-
-    try {
-      if (!db.finishResponse(url, scheduledAt, pingStartedAt, finishedAt, responseCode, error)) {
-        logger.info("Skipped updating the response for " + url + " (scheduled at " + scheduledAt + ") because it's already finished");
-      }
-    } catch (Exception e) {
-      logger.log(Level.WARNING, "Could not update the response row for " + url, e);
-    }
+    return new Attempt(startedAt, Instant.now(), responseCode, error);
   }
 }
