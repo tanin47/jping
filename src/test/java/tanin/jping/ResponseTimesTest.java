@@ -6,6 +6,8 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 public class ResponseTimesTest extends Base {
 
   static final String URL = "https://example.com";
@@ -28,6 +30,37 @@ public class ResponseTimesTest extends Base {
   }
 
   @Test
+  void issuesApiReturnsTheFailedChecksAndTheMinutesWithoutData() throws Exception {
+    db.addWebsite(URL);
+    var start = Instant.parse("2026-11-01T00:00:00Z");
+    addCheck(start, 503, 100, null);
+    addCheck(start.plusSeconds(60), 200, 100, null);
+    addCheck(start.plusSeconds(120), null, 5000, "Timed out after 5 seconds");
+
+    var response = request(
+      "GET",
+      "/api/websites/issues?url=https%3A%2F%2Fexample.com&start=2026-11-01T00:00:00Z&end=2026-11-01T00:05:00Z",
+      null,
+      true
+    );
+    assertEquals(200, response.statusCode());
+    var body = com.eclipsesource.json.Json.parse(response.body()).asObject();
+    var failures = body.get("failures").asArray();
+    assertEquals(2, failures.size());
+    assertEquals("2026-11-01T00:00:00Z", failures.get(0).asObject().getString("scheduledAt", null));
+    assertEquals(503, failures.get(0).asObject().getInt("responseCode", 0));
+    assertTrue(failures.get(1).asObject().get("responseCode").isNull());
+    assertEquals("Timed out after 5 seconds", failures.get(1).asObject().getString("error", null));
+    var noData = body.get("noData").asArray();
+    assertEquals(2, noData.size());
+    assertEquals("2026-11-01T00:03:00Z", noData.get(0).asString());
+    assertEquals("2026-11-01T00:04:00Z", noData.get(1).asString());
+
+    assertEquals(400, request("GET", "/api/websites/issues?start=2026-11-01T00:00:00Z&end=2026-11-01T01:00:00Z", null, true).statusCode());
+    assertEquals(400, request("GET", "/api/websites/issues?url=https%3A%2F%2Fexample.com", null, true).statusCode());
+  }
+
+  @Test
   void showsTheResponseTimesAndTheLastFailure() throws Exception {
     db.addWebsite(URL);
     var minute = Instant.now().truncatedTo(ChronoUnit.MINUTES);
@@ -41,5 +74,6 @@ public class ResponseTimesTest extends Base {
     assertContains(latency, "p99 2.5s");
     assertContains(latency, "max 2.5s");
     assertContains(elem(tid("website-last-failure")).getText(), "Last failure: Timed out after 5 seconds");
+    assertEquals("33.33333333%", elem(tid("website-uptime")).getText());
   }
 }

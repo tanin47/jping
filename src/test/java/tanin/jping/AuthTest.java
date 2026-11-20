@@ -8,7 +8,7 @@ public class AuthTest extends Base {
 
   @Test
   void everythingExceptTheHealthcheckRequiresCredentials() throws Exception {
-    for (var path : new String[]{"/", "/admin", "/api/websites", "/assets/images/logo.png"}) {
+    for (var path : new String[]{"/", "/admin", "/api/websites", "/api/websites/issues", "/assets/images/logo.png"}) {
       var response = request("GET", path, null, false);
       assertEquals(401, response.statusCode(), path);
       assertContains(response.headers().firstValue("WWW-Authenticate").orElse(""), "Basic");

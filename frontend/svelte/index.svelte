@@ -2,11 +2,13 @@
 // The websites and their uptime timelines are loaded from the server.
 import { untrack } from 'svelte';
 import AddSiteForm from './_add_site_form.svelte';
+import BucketPanel from './_bucket_panel.svelte';
 import JpingUptimeBar from './_jping_uptime_bar.svelte';
 import PendingBar from './_pending_bar.svelte';
 import RemoveSiteDialog from './_remove_site_dialog.svelte';
 import { IS_ADMIN, api } from './globals';
 import type { Bucket, Failure, Period, Site, Status, TimeZoneMode, WebsiteUrl } from './models';
+import type { Ratio } from './uptime';
 import {
   BAR_COLOR,
   DOT_COLOR,
@@ -22,6 +24,7 @@ import {
   formatPercent,
   formatResponseCode,
   formatTime,
+  ratioOf,
   statusOf,
   tooltipAlign,
 } from './uptime';
@@ -84,11 +87,10 @@ function toFailure(json: any): Failure | null {
 }
 
 // Checks without a result are left out, so missing data doesn't count as downtime.
-function overallUptime(buckets: Bucket[]): number | null {
+function overallUptime(buckets: Bucket[]): Ratio | null {
   const successes = buckets.reduce((sum, b) => sum + b.successes, 0);
   const failures = buckets.reduce((sum, b) => sum + b.failures, 0);
-  const checks = successes + failures;
-  return checks === 0 ? null : (successes * 100) / checks;
+  return ratioOf(successes, successes + failures);
 }
 
 function currentStatus(buckets: Bucket[]): Status {
@@ -119,6 +121,32 @@ function emptyBuckets(p: Period, tz: TimeZoneMode): Bucket[] {
 
 function formatFailure(failure: Failure): string {
   return failure.responseCode === null && failure.error ? failure.error : formatResponseCode(failure.responseCode);
+}
+
+// --- Bucket panel ---
+
+// The start time of the bucket whose details are shown, by URL. A bucket is identified by its start
+// because the buckets are rebuilt on every refresh.
+let openBucketStarts: Record<string, number> = $state({});
+
+// The buckets are different in another period or time zone, so the panels close.
+$effect(() => {
+  period;
+  timeZone;
+  untrack(() => (openBucketStarts = {}));
+});
+
+function toggleBucket(site: Site, bucket: Bucket) {
+  const start = bucket.start.getTime();
+  if (openBucketStarts[site.url] === start) {
+    delete openBucketStarts[site.url];
+  } else {
+    openBucketStarts[site.url] = start;
+  }
+}
+
+function closeBucket(site: Site) {
+  delete openBucketStarts[site.url];
 }
 
 // --- Server calls ---
@@ -203,6 +231,7 @@ function onSiteRemoved(url: string) {
         {/each}
       </div>
     {/if}
+    <div class="opacity-60">Click for details</div>
   </div>
 {/snippet}
 
@@ -210,6 +239,7 @@ function onSiteRemoved(url: string) {
   {@const buckets = site.buckets}
   {@const uptime = overallUptime(buckets)}
   {@const current = currentStatus(buckets)}
+  {@const openBucket = buckets.find((b) => b.start.getTime() === openBucketStarts[site.url])}
   <div class="card bg-base-200">
     <div class="card-body p-4 gap-3">
       <div class="flex items-center gap-3">
@@ -218,8 +248,7 @@ function onSiteRemoved(url: string) {
           <a href={site.url} target="_blank" rel="noopener noreferrer" class="font-semibold link link-hover truncate block" data-test-id="website-url">{site.url}</a>
         </div>
         <div class="text-right">
-          <div class="text-lg font-bold {TEXT_COLOR[statusOf(uptime)]}">{formatPercent(uptime)}</div>
-          <div class="text-xs opacity-60">uptime</div>
+          <div class="text-lg font-bold {TEXT_COLOR[statusOf(uptime)]}" data-test-id="website-uptime">{formatPercent(uptime)}</div>
         </div>
         {#if IS_ADMIN}
           <button class="btn btn-ghost btn-sm btn-square" aria-label="Remove {site.url}" title="Remove" data-test-id="remove-website-button" data-test-value={site.url} onclick={() => askToRemove(site)}>
@@ -230,13 +259,21 @@ function onSiteRemoved(url: string) {
 
       <div class="flex h-8 gap-px">
         {#each buckets as bucket, i}
-          <!-- Sized by duration, so the latest (partial) bucket is narrower and the timeline lines up with JPing's bar. -->
+          <!-- Sized by duration, so the latest (partial) bucket is narrower and the timeline lines up with JPing's bar.
+               The minimum width keeps it clickable right after it starts. -->
           <div
-            class="tooltip min-w-0 {tooltipAlign((i + 0.5) / buckets.length)}"
+            class="tooltip min-w-1.5 {tooltipAlign((i + 0.5) / buckets.length)}"
             style="flex: {bucket.end.getTime() - bucket.start.getTime()} 1 0px;"
           >
             {@render bucketTip(bucket)}
-            <div class="h-full w-full rounded-sm {BAR_COLOR[bucket.status]} hover:opacity-70"></div>
+            <button
+              class="block h-full w-full cursor-pointer rounded-sm {BAR_COLOR[bucket.status]} hover:opacity-70 {bucket === openBucket ? 'outline-2 outline-offset-1 outline-base-content' : ''}"
+              aria-label="Show the details from {formatTime(bucket.start, period, timeZone)} to {formatTime(bucket.end, period, timeZone)}"
+              aria-expanded={bucket === openBucket}
+              data-test-id="bucket"
+              data-test-value={bucket.start.toISOString()}
+              onclick={() => toggleBucket(site, bucket)}
+            ></button>
           </div>
         {/each}
         <PendingBar />
@@ -246,6 +283,19 @@ function onSiteRemoved(url: string) {
         <span>{formatAxis(buckets[0].start, period, timeZone)}</span>
         <span>Now</span>
       </div>
+
+      {#if openBucket}
+        {#key openBucket.start.getTime()}
+          <BucketPanel
+            url={site.url}
+            bucket={openBucket}
+            {period}
+            {timeZone}
+            refreshKey={pullTick}
+            onClose={() => closeBucket(site)}
+          />
+        {/key}
+      {/if}
 
       {#if site.latency || site.lastFailure}
         <div class="flex flex-col gap-0.5 text-xs opacity-60">
@@ -340,7 +390,7 @@ function onSiteRemoved(url: string) {
   </section>
 
   <p class="text-sm opacity-60" data-test-id="how-it-works">
-    JPing checks each URL once a minute. A check succeeds when the URL returns a 2xx, 3xx, or 4xx status code,
+    Each URL is checked once a minute. A check succeeds when the URL returns a 2xx, 3xx, or 4xx status code,
     and fails when it returns a 5xx status code or doesn't respond in time. Uptime is the percentage of successful checks.
   </p>
 

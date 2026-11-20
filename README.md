@@ -23,6 +23,7 @@ Features
   when the URL doesn't respond within 5 seconds. A check that gets no response is retried up to 3 times. A 5xx status code isn't retried.
 * Shows an uptime timeline for each URL over the last 24 hours, 7 days, 30 days, or 90 days.
 * Shows the p50, p90, p99, and max response times, and the status codes of failed checks.
+* Click a bar to see the minutes that failed or have no data, with back-to-back minutes grouped together.
 * Tracks JPing's own uptime, so you can tell a down website apart from a time when JPing itself wasn't running.
 * Refreshes the page automatically every 30 seconds.
 * Protected by HTTP Basic Authentication.

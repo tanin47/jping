@@ -14,6 +14,7 @@ import {
   formatTime,
   rangeOf,
   rangeParams,
+  ratioOf,
   statusOf,
   tooltipAlign,
 } from './uptime';
@@ -102,7 +103,7 @@ let uptime = $derived.by(() => {
   const elapsed = segments.filter((s) => s.kind !== 'none');
   const total = elapsed.reduce((sum, s) => sum + (s.end.getTime() - s.start.getTime()), 0);
   const up = elapsed.filter((s) => s.kind === 'up').reduce((sum, s) => sum + (s.end.getTime() - s.start.getTime()), 0);
-  return total === 0 ? null : (up * 100) / total;
+  return ratioOf(up, total);
 });
 
 // This page was served by JPing, so it's up right now.
@@ -139,8 +140,7 @@ function alignOf(segment: Segment): string {
         <div class="font-semibold truncate">This monitoring system</div>
       </div>
       <div class="text-right">
-        <div class="text-lg font-bold {TEXT_COLOR[statusOf(uptime)]}">{formatPercent(uptime)}</div>
-        <div class="text-xs opacity-60">uptime</div>
+        <div class="text-lg font-bold {TEXT_COLOR[statusOf(uptime)]}" data-test-id="jping-uptime-percent">{formatPercent(uptime)}</div>
       </div>
     </div>
 

@@ -61,6 +61,15 @@ public class PublicAccessTest extends Base {
       200,
       request("GET", "/api/websites/uptime?start=2026-11-10T00:00:00Z&end=2026-11-11T00:00:00Z", null, false).statusCode()
     );
+    assertEquals(
+      200,
+      request(
+        "GET",
+        "/api/websites/issues?url=https%3A%2F%2Fexample.com&start=2026-11-10T00:00:00Z&end=2026-11-11T00:00:00Z",
+        null,
+        false
+      ).statusCode()
+    );
   }
 
   @Test

@@ -14,6 +14,7 @@ import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.logging.Logger;
@@ -292,14 +293,7 @@ public class DatabaseService {
         stmt.setTimestamp(2, end);
         try (var rs = stmt.executeQuery()) {
           while (rs.next()) {
-            lastFailureByUrl.put(
-              rs.getString("url"),
-              new Failure(
-                rs.getTimestamp("scheduled_at").toInstant(),
-                (Integer) rs.getObject("response_code"),
-                rs.getString("error")
-              )
-            );
+            lastFailureByUrl.put(rs.getString("url"), readFailure(rs));
           }
         }
       }
@@ -322,6 +316,72 @@ public class DatabaseService {
       ));
     }
     return result;
+  }
+
+  /** Returns the failed checks of a website in [start, end), ordered from oldest to newest. */
+  public List<Failure> listFailures(String url, Instant start, Instant end) throws SQLException {
+    try (
+      var conn = connect();
+      var stmt = conn.prepareStatement(
+        "SELECT scheduled_at, response_code, error FROM response " +
+          "WHERE url = ? AND scheduled_at >= ? AND scheduled_at < ? AND finished_at IS NOT NULL AND " + FAILURE + " " +
+          "ORDER BY scheduled_at"
+      )
+    ) {
+      stmt.setString(1, url);
+      stmt.setTimestamp(2, Timestamp.from(start));
+      stmt.setTimestamp(3, Timestamp.from(end));
+      try (var rs = stmt.executeQuery()) {
+        var failures = new ArrayList<Failure>();
+        while (rs.next()) {
+          failures.add(readFailure(rs));
+        }
+        return failures;
+      }
+    }
+  }
+
+  /**
+   * Returns the minutes in [start, end) without a finished check of a website, ordered from oldest to newest.
+   * Checks are scheduled at the start of each minute, so every minute should have one.
+   */
+  public List<Instant> listNoDataMinutes(String url, Instant start, Instant end) throws SQLException {
+    var finished = new HashSet<Instant>();
+    try (
+      var conn = connect();
+      var stmt = conn.prepareStatement(
+        "SELECT scheduled_at FROM response WHERE url = ? AND scheduled_at >= ? AND scheduled_at < ? AND finished_at IS NOT NULL"
+      )
+    ) {
+      stmt.setString(1, url);
+      stmt.setTimestamp(2, Timestamp.from(start));
+      stmt.setTimestamp(3, Timestamp.from(end));
+      try (var rs = stmt.executeQuery()) {
+        while (rs.next()) {
+          finished.add(rs.getTimestamp("scheduled_at").toInstant());
+        }
+      }
+    }
+
+    var minutes = new ArrayList<Instant>();
+    var minute = start.truncatedTo(ChronoUnit.MINUTES);
+    if (minute.isBefore(start)) {
+      minute = minute.plus(1, ChronoUnit.MINUTES);
+    }
+    for (; minute.isBefore(end); minute = minute.plus(1, ChronoUnit.MINUTES)) {
+      if (!finished.contains(minute)) {
+        minutes.add(minute);
+      }
+    }
+    return minutes;
+  }
+
+  private static Failure readFailure(ResultSet rs) throws SQLException {
+    return new Failure(
+      rs.getTimestamp("scheduled_at").toInstant(),
+      (Integer) rs.getObject("response_code"),
+      rs.getString("error")
+    );
   }
 
   private static BucketStats bucketStatsOf(Map<String, BucketStats[]> statsByUrl, String url, int bucketCount, int bucket) {

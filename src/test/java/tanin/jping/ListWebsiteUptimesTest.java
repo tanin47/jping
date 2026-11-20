@@ -258,6 +258,52 @@ public class ListWebsiteUptimesTest {
     assertNull(website(START, END, 1).lastFailure());
   }
 
+  @Test
+  void listFailuresReturnsTheFailedChecksInTheRangeInOrder() throws Exception {
+    db.addWebsite("https://other.example.com");
+    addCheck(START.minusSeconds(60), 500, 100L, null);
+    addCheck(START.plusSeconds(120), null, 10L, "ConnectException");
+    addCheck(START, 503, 100L, null);
+    addCheck(START.plusSeconds(60), 200, 100L, null);
+    addCheck(START.plusSeconds(180), 404, 100L, null);
+    addCheck(START.plusSeconds(240), null, false);
+    addCheck(END, 500, 100L, null);
+    try (var conn = db.connect(); var stmt = conn.createStatement()) {
+      stmt.execute(
+        "INSERT INTO response (url, scheduled_at, started_at, finished_at, response_code) " +
+          "VALUES ('https://other.example.com', '2026-11-01T00:05:00Z', '2026-11-01T00:05:00Z', '2026-11-01T00:05:01Z', 500)"
+      );
+    }
+
+    assertEquals(
+      List.of(
+        new DatabaseService.Failure(START, 503, null),
+        new DatabaseService.Failure(START.plusSeconds(120), null, "ConnectException")
+      ),
+      db.listFailures(URL, START, END)
+    );
+  }
+
+  @Test
+  void listNoDataMinutesReturnsTheMinutesWithoutAFinishedCheck() throws Exception {
+    db.addWebsite("https://other.example.com");
+    addCheck(START, 200, 100L, null);
+    addCheck(START.plusSeconds(60), null, 5000L, "Timed out after 5 seconds");
+    addCheck(START.plusSeconds(120), null, false);
+    addCheck(START.plusSeconds(240), 500, 100L, null);
+    try (var conn = db.connect(); var stmt = conn.createStatement()) {
+      stmt.execute(
+        "INSERT INTO response (url, scheduled_at, started_at, finished_at, response_code) " +
+          "VALUES ('https://other.example.com', '2026-11-01T00:03:00Z', '2026-11-01T00:03:00Z', '2026-11-01T00:03:01Z', 200)"
+      );
+    }
+
+    assertEquals(
+      List.of(START.plusSeconds(120), START.plusSeconds(180), START.plusSeconds(300)),
+      db.listNoDataMinutes(URL, START.plusSeconds(30), START.plusSeconds(360))
+    );
+  }
+
   void assertBucket(DatabaseService.Bucket bucket, int total, int successes, int failures, int noData) {
     assertEquals(total, bucket.total());
     assertEquals(successes, bucket.successes());
