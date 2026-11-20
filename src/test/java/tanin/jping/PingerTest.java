@@ -4,6 +4,7 @@ import org.junit.jupiter.api.*;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -79,6 +80,66 @@ public class PingerTest {
     server.pinger.ping(url, minute);
 
     assertResponse(url, minute, null, "ConnectException");
+  }
+
+  @Test
+  void retriesUpToThreeTimesAndRecordsTheLastError() throws Exception {
+    var url = "http://localhost:1/";
+    db.addWebsite(url);
+    var minute = Instant.now().truncatedTo(ChronoUnit.MINUTES);
+    var attempts = new AtomicInteger();
+    var pinger = new Pinger(db) {
+      @Override
+      Attempt attempt(String url) {
+        return new Attempt(Instant.now(), Instant.now(), null, "ConnectException " + attempts.incrementAndGet());
+      }
+    };
+
+    pinger.ping(url, minute);
+
+    assertEquals(4, attempts.get());
+    assertResponse(url, minute, null, "ConnectException 4");
+  }
+
+  @Test
+  void doesNotRetryA5xxStatusCode() throws Exception {
+    var url = "http://localhost:1/";
+    db.addWebsite(url);
+    var minute = Instant.now().truncatedTo(ChronoUnit.MINUTES);
+    var attempts = new AtomicInteger();
+    var pinger = new Pinger(db) {
+      @Override
+      Attempt attempt(String url) {
+        attempts.incrementAndGet();
+        return new Attempt(Instant.now(), Instant.now(), 500, null);
+      }
+    };
+
+    pinger.ping(url, minute);
+
+    assertEquals(1, attempts.get());
+    assertResponse(url, minute, 500, null);
+  }
+
+  @Test
+  void stopsRetryingOnceAnAttemptSucceeds() throws Exception {
+    var url = "http://localhost:1/";
+    db.addWebsite(url);
+    var minute = Instant.now().truncatedTo(ChronoUnit.MINUTES);
+    var attempts = new AtomicInteger();
+    var pinger = new Pinger(db) {
+      @Override
+      Attempt attempt(String url) {
+        return attempts.incrementAndGet() < 3
+          ? new Attempt(Instant.now(), Instant.now(), null, "ConnectException")
+          : new Attempt(Instant.now(), Instant.now(), 200, null);
+      }
+    };
+
+    pinger.ping(url, minute);
+
+    assertEquals(3, attempts.get());
+    assertResponse(url, minute, 200, null);
   }
 
   void assertResponse(String url, Instant scheduledAt, Integer responseCode, String errorPrefix) throws Exception {
